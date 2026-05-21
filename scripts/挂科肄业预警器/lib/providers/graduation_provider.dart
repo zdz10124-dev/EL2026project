@@ -7,7 +7,7 @@ class GraduationProvider extends ChangeNotifier {
   final StorageService _storageService;
 
   GraduationOverview _overview = GraduationOverview();
-  bool _isLoading = false;
+  final bool _isLoading = false;
   String? _errorMessage;
 
   GraduationProvider(this._storageService) {
@@ -142,7 +142,8 @@ class GraduationProvider extends ChangeNotifier {
   }
 
   /// 更新单项要求进度
-  Future<void> updateRequirementProgress(String requirementId, double completedAmount) async {
+  Future<void> updateRequirementProgress(
+      String requirementId, double completedAmount) async {
     final updatedRequirements = _overview.requirements.map((req) {
       if (req.id == requirementId) {
         return req.copyWith(completedAmount: completedAmount);

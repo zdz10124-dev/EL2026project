@@ -26,7 +26,8 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
 
     final authProvider = context.read<AuthProvider>();
-    final targetRoute = authProvider.isAuthenticated ? AppRouter.home : AppRouter.login;
+    final targetRoute =
+        authProvider.isAuthenticated ? AppRouter.home : AppRouter.login;
 
     Navigator.of(context).pushReplacementNamed(targetRoute);
   }
@@ -58,7 +59,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
+                    color: Colors.black.withValues(alpha: 0.2),
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -86,7 +87,7 @@ class _SplashScreenState extends State<SplashScreen> {
               '规划学习，顺利毕业',
               style: TextStyle(
                 fontSize: 16,
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
               ),
             ),
             const SizedBox(height: 48),

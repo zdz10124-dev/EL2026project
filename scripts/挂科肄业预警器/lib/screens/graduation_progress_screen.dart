@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/graduation_model.dart';
 import '../providers/graduation_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/progress_card.dart';
@@ -11,9 +12,7 @@ class GraduationProgressScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('毕业进度'),
-      ),
+      appBar: AppBar(title: const Text('毕业进度')),
       body: Consumer<GraduationProvider>(
         builder: (context, graduation, _) {
           final overview = graduation.overview;
@@ -27,8 +26,10 @@ class GraduationProgressScreen extends StatelessWidget {
                 ProgressCard(
                   title: '总学分进度',
                   progress: overview.totalProgress,
-                  progressText: '${overview.totalCompletedCredits.toStringAsFixed(0)} / ${overview.totalRequiredCredits.toStringAsFixed(0)} 学分',
-                  subtitle: '已完成 ${(overview.totalProgress * 100).toStringAsFixed(1)}%',
+                  progressText:
+                      '${overview.totalCompletedCredits.toStringAsFixed(0)} / ${overview.totalRequiredCredits.toStringAsFixed(0)} 学分',
+                  subtitle:
+                      '已完成 ${(overview.totalProgress * 100).toStringAsFixed(1)}%',
                   onTap: null,
                 ),
                 const SizedBox(height: 16),
@@ -76,7 +77,9 @@ class GraduationProgressScreen extends StatelessWidget {
                               overview.idealAverageScore,
                             ),
                             style: TextStyle(
-                              color: AppTheme.getScoreColor(overview.currentSemesterAverage),
+                              color: AppTheme.getScoreColor(
+                                overview.currentSemesterAverage,
+                              ),
                               fontSize: 14,
                             ),
                           ),
@@ -90,17 +93,14 @@ class GraduationProgressScreen extends StatelessWidget {
                 // 各项要求进度
                 const Text(
                   '各项要求进度',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 12),
 
                 // 各项进度列表
-                ...overview.requirements.map((req) => _RequirementTile(
-                  requirement: req,
-                )),
+                ...overview.requirements.map(
+                  (req) => _RequirementTile(requirement: req),
+                ),
               ],
             ),
           );
@@ -135,7 +135,7 @@ class _ScoreIndicator extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.getScoreColor(score).withOpacity(0.1),
+        color: AppTheme.getScoreColor(score).withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -151,13 +151,7 @@ class _ScoreIndicator extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey[600],
-            ),
-          ),
+          Text(label, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
         ],
       ),
     );
@@ -166,13 +160,13 @@ class _ScoreIndicator extends StatelessWidget {
 
 /// 单项要求进度组件
 class _RequirementTile extends StatelessWidget {
-  final dynamic requirement;
+  final GraduationRequirement requirement;
 
   const _RequirementTile({required this.requirement});
 
   @override
   Widget build(BuildContext context) {
-    final progress = requirement.progress as double;
+    final progress = requirement.progress;
     final color = AppTheme.getProgressColor(progress);
 
     return Card(
@@ -193,10 +187,7 @@ class _RequirementTile extends StatelessWidget {
                 ),
                 Text(
                   '${requirement.completedAmount.toStringAsFixed(0)} / ${requirement.requiredAmount.toStringAsFixed(0)} ${requirement.unit}',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                 ),
               ],
             ),
@@ -213,10 +204,7 @@ class _RequirementTile extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               '已完成 ${(progress * 100).toStringAsFixed(1)}%',
-              style: TextStyle(
-                fontSize: 12,
-                color: color,
-              ),
+              style: TextStyle(fontSize: 12, color: color),
             ),
           ],
         ),

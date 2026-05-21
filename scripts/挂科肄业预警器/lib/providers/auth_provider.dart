@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../services/storage_service.dart';
-import '../services/encryption_service.dart';
 
 /// 认证状态
 enum AuthStatus {
@@ -13,7 +12,6 @@ enum AuthStatus {
 /// 认证状态管理
 class AuthProvider extends ChangeNotifier {
   final StorageService _storageService;
-  final EncryptionService _encryptionService = EncryptionService();
 
   AuthStatus _status = AuthStatus.uninitialized;
   UserModel _user = UserModel.empty();
@@ -37,7 +35,9 @@ class AuthProvider extends ChangeNotifier {
       final userData = _storageService.getJson('user_data');
       if (userData != null) {
         _user = UserModel.fromJson(userData);
-        _status = _user.isLoggedIn ? AuthStatus.authenticated : AuthStatus.unauthenticated;
+        _status = _user.isLoggedIn
+            ? AuthStatus.authenticated
+            : AuthStatus.unauthenticated;
       } else {
         _status = AuthStatus.unauthenticated;
       }
@@ -80,7 +80,8 @@ class AuthProvider extends ChangeNotifier {
       // 保存用户信息到本地
       await _storageService.setJson('user_data', _user.toJson());
       // 安全存储 token（模拟）
-      await _storageService.setSecure('auth_token', 'mock_token_${DateTime.now().millisecondsSinceEpoch}');
+      await _storageService.setSecure(
+          'auth_token', 'mock_token_${DateTime.now().millisecondsSinceEpoch}');
 
       _status = AuthStatus.authenticated;
       _isLoading = false;

@@ -79,14 +79,14 @@ class SettingsScreen extends StatelessWidget {
           Card(
             child: Column(
               children: [
-                ListTile(
-                  title: const Text('版本号'),
-                  subtitle: const Text('v1.0.0'),
+                const ListTile(
+                  title: Text('版本号'),
+                  subtitle: Text('v1.0.0'),
                 ),
                 const Divider(height: 1),
-                ListTile(
-                  title: const Text('开发者'),
-                  subtitle: const Text('挂科肄业预警器团队'),
+                const ListTile(
+                  title: Text('开发者'),
+                  subtitle: Text('挂科肄业预警器团队'),
                 ),
                 const Divider(height: 1),
                 ListTile(

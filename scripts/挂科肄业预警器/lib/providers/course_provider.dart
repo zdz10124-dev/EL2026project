@@ -7,7 +7,7 @@ class CourseProvider extends ChangeNotifier {
   final StorageService _storageService;
 
   List<CourseModel> _courses = [];
-  bool _isLoading = false;
+  final bool _isLoading = false;
   String? _errorMessage;
 
   CourseProvider(this._storageService) {

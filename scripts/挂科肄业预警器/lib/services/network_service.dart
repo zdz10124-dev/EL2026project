@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'storage_service.dart';
@@ -52,7 +51,8 @@ class NetworkService {
   }
 
   /// GET 请求
-  Future<ApiResponse> get(String path, {Map<String, dynamic>? queryParams}) async {
+  Future<ApiResponse> get(String path,
+      {Map<String, dynamic>? queryParams}) async {
     try {
       final response = await _dio.get(path, queryParameters: queryParams);
       return ApiResponse.success(response.data);

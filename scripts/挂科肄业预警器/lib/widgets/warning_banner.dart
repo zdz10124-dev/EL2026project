@@ -30,7 +30,7 @@ class WarningBanner extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: AppTheme.dangerColor.withOpacity(0.3),
+              color: AppTheme.dangerColor.withValues(alpha: 0.3),
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
@@ -43,7 +43,7 @@ class WarningBanner extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: Colors.white.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(
@@ -71,7 +71,7 @@ class WarningBanner extends StatelessWidget {
                   Text(
                     '点击查看详情',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                       fontSize: 13,
                     ),
                   ),
@@ -82,7 +82,7 @@ class WarningBanner extends StatelessWidget {
             // 右侧箭头
             Icon(
               Icons.arrow_forward_ios,
-              color: Colors.white.withOpacity(0.8),
+              color: Colors.white.withValues(alpha: 0.8),
               size: 16,
             ),
           ],

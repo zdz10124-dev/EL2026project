@@ -27,17 +27,24 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   void initState() {
     super.initState();
     final course = context.read<CourseProvider>().courses.firstWhere(
-      (c) => c.id == widget.courseId,
-      orElse: () => CourseModel(id: '', name: '', teacher: ''),
-    );
+          (c) => c.id == widget.courseId,
+          orElse: () => CourseModel(id: '', name: '', teacher: ''),
+        );
 
-    _regularController = TextEditingController(text: course.regularScore?.toString() ?? '');
-    _midtermController = TextEditingController(text: course.midtermScore?.toString() ?? '');
-    _finalController = TextEditingController(text: course.finalScore?.toString() ?? '');
-    _regularWeightController = TextEditingController(text: (course.regularWeight * 100).toStringAsFixed(0));
-    _midtermWeightController = TextEditingController(text: (course.midtermWeight * 100).toStringAsFixed(0));
-    _finalWeightController = TextEditingController(text: (course.finalWeight * 100).toStringAsFixed(0));
-    _skipDeductionController = TextEditingController(text: course.skipDeduction.toStringAsFixed(1));
+    _regularController =
+        TextEditingController(text: course.regularScore?.toString() ?? '');
+    _midtermController =
+        TextEditingController(text: course.midtermScore?.toString() ?? '');
+    _finalController =
+        TextEditingController(text: course.finalScore?.toString() ?? '');
+    _regularWeightController = TextEditingController(
+        text: (course.regularWeight * 100).toStringAsFixed(0));
+    _midtermWeightController = TextEditingController(
+        text: (course.midtermWeight * 100).toStringAsFixed(0));
+    _finalWeightController = TextEditingController(
+        text: (course.finalWeight * 100).toStringAsFixed(0));
+    _skipDeductionController =
+        TextEditingController(text: course.skipDeduction.toStringAsFixed(1));
   }
 
   @override
@@ -131,9 +138,10 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    color: AppTheme.primaryColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
@@ -148,8 +156,10 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
             ),
             const Divider(),
             _infoRow(Icons.person_outline, '教师', course.teacher),
-            _infoRow(Icons.location_on_outlined, '教室', course.classroom ?? '未指定'),
-            _infoRow(Icons.access_time, '时间', '${course.weekday ?? "未知"} ${course.startTime ?? ""}-${course.endTime ?? ""}'),
+            _infoRow(
+                Icons.location_on_outlined, '教室', course.classroom ?? '未指定'),
+            _infoRow(Icons.access_time, '时间',
+                '${course.weekday ?? "未知"} ${course.startTime ?? ""}-${course.endTime ?? ""}'),
             _infoRow(Icons.grade_outlined, '学分', '${course.credit} 学分'),
           ],
         ),
@@ -192,9 +202,10 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                 const Spacer(),
                 if (course.isSkipWarning)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: AppTheme.dangerColor.withOpacity(0.1),
+                      color: AppTheme.dangerColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: const Text(
@@ -234,7 +245,8 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   '翘课已达 $course.skipCount 次，已达到预警阈值！建议按时上课。',
-                  style: const TextStyle(color: AppTheme.dangerColor, fontSize: 13),
+                  style: const TextStyle(
+                      color: AppTheme.dangerColor, fontSize: 13),
                 ),
               ),
           ],
@@ -276,13 +288,15 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                       style: TextStyle(
                         fontSize: 48,
                         fontWeight: FontWeight.bold,
-                        color: AppTheme.getScoreColor(course.weightedAverageScore),
+                        color:
+                            AppTheme.getScoreColor(course.weightedAverageScore),
                       ),
                     ),
                     Text(
                       '加权平均分 · ${course.scoreStatus}',
                       style: TextStyle(
-                        color: AppTheme.getScoreColor(course.weightedAverageScore),
+                        color:
+                            AppTheme.getScoreColor(course.weightedAverageScore),
                       ),
                     ),
                   ],

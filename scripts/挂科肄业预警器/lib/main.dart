@@ -5,7 +5,6 @@ import 'providers/auth_provider.dart';
 import 'providers/course_provider.dart';
 import 'providers/graduation_provider.dart';
 import 'services/storage_service.dart';
-import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,7 +18,8 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider(storageService)),
         ChangeNotifierProvider(create: (_) => CourseProvider(storageService)),
-        ChangeNotifierProvider(create: (_) => GraduationProvider(storageService)),
+        ChangeNotifierProvider(
+            create: (_) => GraduationProvider(storageService)),
       ],
       child: const App(),
     ),

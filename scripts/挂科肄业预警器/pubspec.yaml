@@ -1,4 +1,4 @@
-name: 挂科肄业预警器
+name: course_warning_app
 description: 挂科肄业预警器 - 帮助学生明确毕业目标、挂科风险及学习进度的手机应用
 publish_to: 'none'
 version: 1.0.0+1
