@@ -1,0 +1,79 @@
+Flutter crash report.
+Please report a bug at https://github.com/flutter/flutter/issues.
+
+## command
+
+flutter analyze
+
+## exception
+
+_Exception: Exception: analysis server exited with code 255 and output:
+[stderr] #7      LspByteStreamServerChannel.listen.<anonymous closure> (package:analysis_server/src/lsp/channel/lsp_byte_stream_channel.dart:67)
+[stderr] #8      _rootRunUnary (dart:async/zone_root.dart:48)
+[stderr] #9      _CustomZone.runUnary (dart:async/zone.dart:733)
+[stderr] #10     _CustomZone.runUnaryGuarded (dart:async/zone.dart:633)
+[stderr] #11     _BufferingStreamSubscription._sendData (dart:async/stream_impl.dart:381)
+[stderr] #12     _DelayedData.perform (dart:async/stream_impl.dart:573)
+[stderr] #13     _PendingEvents.handleNext (dart:async/stream_impl.dart:678)
+[stderr] #14     _PendingEvents.schedule.<anonymous closure> (dart:async/stream_impl.dart:649)
+[stderr] #15     _rootRun (dart:async/zone_root.dart:27)
+[stderr] #16     _CustomZone.run (dart:async/zone.dart:726)
+[stderr] #17     _CustomZone.runGuarded (dart:async/zone.dart:625)
+[stderr] #18     _CustomZone.bindCallbackGuarded.<anonymous closure> (dart:async/zone.dart:666)
+[stderr] #19     _rootRun (dart:async/zone_root.dart:35)
+[stderr] #20     _CustomZone.run (dart:async/zone.dart:726)
+[stderr] #21     _CustomZone.runGuarded (dart:async/zone.dart:625)
+[stderr] #22     _CustomZone.bindCallbackGuarded.<anonymous closure> (dart:async/zone.dart:666)
+[stderr] #23     _microtaskLoop (dart:async/schedule_microtask.dart:40)
+[stderr] #24     _startMicrotaskLoop (dart:async/schedule_microtask.dart:49)
+[stderr] #25     _runPendingImmediateCallback (dart:isolate-patch/isolate_patch.dart:127)
+[stderr] #26     _RawReceivePort._handleMessage (dart:isolate-patch/isolate_patch.dart:193)
+
+```
+```
+
+## flutter doctor
+
+```
+[✓] Flutter (Channel master, 3.44.0-1.0.pre-627, on Microsoft Windows [版本 10.0.26200.8246], locale zh-CN) [3.9s]
+    • Flutter version 3.44.0-1.0.pre-627 on channel master at C:\flutter\flutter-master\flutter
+    • Upstream repository https://github.com/flutter/flutter.git
+    • Framework revision f9af233f48 (9 hours ago), 2026-05-21 05:03:28 +0200
+    • Engine revision eefc3bf37c
+    • Dart version 3.13.0 (build 3.13.0-123.0.dev)
+    • DevTools version 2.58.0
+    • Feature flags: enable-web, enable-linux-desktop, enable-macos-desktop, enable-windows-desktop, enable-android, enable-ios, cli-animations, enable-native-assets, enable-swift-package-manager, omit-legacy-version-file, enable-lldb-debugging, enable-uiscene-migration, enable-riscv64
+
+[✓] Windows Version (Windows 11 or higher, 25H2, 2009) [1,471ms]
+
+[✗] Android toolchain - develop for Android devices [784ms]
+    ✗ Unable to locate Android SDK.
+      Install Android Studio from: https://developer.android.com/studio/index.html
+      On first launch it will assist you in installing the Android SDK components.
+      (or visit https://flutter.dev/to/windows-android-setup for detailed instructions).
+      If the Android SDK has been installed to a custom location, please use
+      `flutter config --android-sdk` to update to that location.
+
+
+[✓] Chrome - develop for the web [775ms]
+    • Chrome at C:\Program Files\Google\Chrome\Application\chrome.exe
+
+[!] Visual Studio - develop Windows apps (Visual Studio Community 2022 17.14.10) [774ms]
+    • Visual Studio at C:\Program Files\Microsoft Visual Studio\2022\Community
+    • Visual Studio Community 2022 version 17.14.36327.8
+    ✗ Visual Studio is missing necessary components. Please re-run the Visual Studio installer for the "Desktop development with C++" workload, and include these components:
+        MSVC v142 - VS 2019 C++ x64/x86 build tools
+         - If there are multiple build tool versions available, install the latest
+        C++ CMake tools for Windows
+        Windows 10 SDK
+
+[✓] Connected device (3 available) [70ms]
+    • Windows (desktop) • windows • windows-x64    • Microsoft Windows [版本 10.0.26200.8246]
+    • Chrome (web)      • chrome  • web-javascript • Google Chrome 148.0.7778.168
+    • Edge (web)        • edge    • web-javascript • Microsoft Edge 148.0.3967.70
+
+[!] Network resources [21.1s]
+    ✗ A network error occurred while checking "https://maven.google.com/": 信号灯超时时间已到
+
+! Doctor found issues in 3 categories.
+```
