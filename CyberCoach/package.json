@@ -1,0 +1,17 @@
+{
+  "name": "cybercoach",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"npm run dev -w cybercoach-server\" \"npm run dev -w cybercoach-web\"",
+    "dev:server": "npm run dev -w cybercoach-server",
+    "dev:web": "npm run dev -w cybercoach-web",
+    "seed": "npm run seed -w cybercoach-server"
+  },
+  "workspaces": [
+    "cybercoach-server",
+    "cybercoach-web"
+  ],
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
