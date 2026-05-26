@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp cybercoach-server/.env.example cybercoach-server/.env)",
+      "Bash(npm install *)"
+    ]
+  }
+}
