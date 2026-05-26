@@ -18,7 +18,11 @@
       "Bash(curl -s http://localhost:3001/api/v1/records -H 'X-Device-Id: test-device')",
       "Bash(curl -s -X POST http://localhost:3001/api/v1/reports/generate -H 'Content-Type: application/json' -H 'X-Device-Id: test-device' -d '{\"record_id\":\"rec_a2a8c4757b8d\"}')",
       "Bash(curl -s -X POST http://localhost:3001/api/v1/plans/generate -H 'Content-Type: application/json' -H 'X-Device-Id: test-device' -d '{\"goal\":\"fitness\",\"available_days_per_week\":4,\"max_duration_s_per_session\":2700,\"preferred_sports\":[\"running\",\"swimming\"]}')",
-      "Bash(curl -s -X PUT http://localhost:3001/api/v1/reminders/settings -H 'Content-Type: application/json' -H 'X-Device-Id: test-device' -d '{\"enabled\":true,\"train_reminder_time\":\"19:00\",\"makeup_reminder_enabled\":true,\"timezone\":\"Asia/Shanghai\"}')"
+      "Bash(curl -s -X PUT http://localhost:3001/api/v1/reminders/settings -H 'Content-Type: application/json' -H 'X-Device-Id: test-device' -d '{\"enabled\":true,\"train_reminder_time\":\"19:00\",\"makeup_reminder_enabled\":true,\"timezone\":\"Asia/Shanghai\"}')",
+      "Bash(cat \"d:/Repos/EL2026project/CyberCoach/cybercoach-server/.gitignore\")",
+      "Bash(cat \"d:/Repos/EL2026project/CyberCoach/.gitignore\")",
+      "Bash(git check-ignore *)",
+      "Bash(git rm *)"
     ],
     "additionalDirectories": [
       "D:\\Repos\\CyberCoach\\cybercoach-web\\src",

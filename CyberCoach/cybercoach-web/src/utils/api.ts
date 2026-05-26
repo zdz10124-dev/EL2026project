@@ -15,7 +15,7 @@ import type {
 
 // ===== Mock 数据（后端未就绪时使用） =====
 
-const useMock = false;
+const useMock = false; // 切换是否使用 Mock 数据
 
 const mockRecordId = 'rec_01J0xxxxxxxxxxxx';
 
