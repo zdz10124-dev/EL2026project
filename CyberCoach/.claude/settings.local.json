@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create *)",
+      "Bash(npm install *)",
+      "Bash(mkdir -p \"/d/Repos/CyberCoach/cybercoach-web/src/{types,constants,utils,hooks,components,pages,routes}\")",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)"
+    ],
+    "additionalDirectories": [
+      "D:\\Repos\\CyberCoach\\cybercoach-web\\src"
+    ]
+  }
+}
