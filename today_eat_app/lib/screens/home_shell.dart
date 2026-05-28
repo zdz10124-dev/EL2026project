@@ -42,7 +42,7 @@ class _HomeShellState extends State<HomeShell> {
         isActive: _currentIndex == 1,
       ),
       InsightsScreen(config: widget.config, repository: _repository),
-      SettingsScreen(config: widget.config),
+      SettingsScreen(config: widget.config, repository: _repository),
     ];
 
     return Scaffold(
