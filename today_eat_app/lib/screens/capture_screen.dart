@@ -121,9 +121,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   Future<void> _pickAndAnalyzeVideo() async {
     final agent = widget.agentService;
     if (agent == null || !agent.isAvailable) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先在设置中配置 AI 模型后使用视频分析')),
-      );
+      _showAiNotConfiguredDialog();
       return;
     }
 
@@ -139,6 +137,23 @@ class _CaptureScreenState extends State<CaptureScreen> {
           videoPath: file.path,
           agentService: agent,
         ),
+      ),
+    );
+  }
+
+  void _showAiNotConfiguredDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('AI 未配置'),
+        content: const Text('AI 功能需要先在设置中配置模型。\n\n'
+            '请前往「设置 → 智能功能 → AI 模型配置」完成设置。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
       ),
     );
   }
@@ -529,7 +544,10 @@ class _EditMealScreenState extends State<EditMealScreen> {
 
   Future<void> _analyzeWithAI() async {
     final agent = widget.agentService;
-    if (agent == null || !agent.isAvailable) return;
+    if (agent == null || !agent.isAvailable) {
+      _showAiNotConfiguredDialog();
+      return;
+    }
 
     setState(() => _aiAnalyzing = true);
     try {
@@ -588,6 +606,23 @@ class _EditMealScreenState extends State<EditMealScreen> {
       _locating = false;
       _locationStatus = result.message;
     });
+  }
+
+  void _showAiNotConfiguredDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('AI 未配置'),
+        content: const Text('AI 功能需要先在设置中配置模型。\n\n'
+            '请前往「设置 → 智能功能 → AI 模型配置」完成设置。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

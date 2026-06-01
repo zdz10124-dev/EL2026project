@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import '../services/llm_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/rating_stars.dart';
 import '../widgets/section_card.dart';
+import 'package:http/http.dart' as http;
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -335,17 +337,50 @@ class _AiConfigScreen extends StatefulWidget {
 }
 
 class _AiConfigScreenState extends State<_AiConfigScreen> {
+  LlmMode _mode = LlmMode.direct;
+
+  // Direct mode fields
   final _apiKeyController = TextEditingController();
   final _baseUrlController = TextEditingController();
   final _modelController = TextEditingController();
-  bool _saving = false;
   bool _showKey = false;
+
+  // Server mode fields
+  final _serverUrlController = TextEditingController();
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _showPassword = false;
+  bool _authBusy = false;
+  String? _authError;
+  String? _loggedInUsername;
+
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final config = widget.llmService.config;
+    if (config != null) {
+      _mode = config.mode;
+      if (config.mode == LlmMode.server) {
+        _serverUrlController.text = config.serverUrl ?? '';
+        _loggedInUsername = config.username;
+      } else {
+        _apiKeyController.text = config.apiKey ?? '';
+        _baseUrlController.text = config.baseUrl ?? '';
+        _modelController.text = config.model ?? '';
+      }
+    }
+  }
 
   @override
   void dispose() {
     _apiKeyController.dispose();
     _baseUrlController.dispose();
     _modelController.dispose();
+    _serverUrlController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
@@ -358,59 +393,30 @@ class _AiConfigScreenState extends State<_AiConfigScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '配置说明',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              '请在下方输入你的 API Key 和模型信息。API Key 会安全存储在设备本地，'
-              '不会上传到其他服务器。',
-              style: TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 24),
-
-            // API Key
-            TextField(
-              controller: _apiKeyController,
-              obscureText: !_showKey,
-              decoration: InputDecoration(
-                labelText: 'API Key',
-                hintText: 'sk-...',
-                suffixIcon: IconButton(
-                  icon: Icon(
-                      _showKey ? Icons.visibility_off : Icons.visibility),
-                  onPressed: () => setState(() => _showKey = !_showKey),
+            // Mode selection
+            SegmentedButton<LlmMode>(
+              segments: const [
+                ButtonSegment(
+                  value: LlmMode.direct,
+                  label: Text('直接连接'),
+                  icon: Icon(Icons.cloud_outlined),
                 ),
-              ),
+                ButtonSegment(
+                  value: LlmMode.server,
+                  label: Text('服务器代理'),
+                  icon: Icon(Icons.dns_outlined),
+                ),
+              ],
+              selected: {_mode},
+              onSelectionChanged: (selected) =>
+                  setState(() => _mode = selected.first),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 20),
 
-            // Base URL
-            TextField(
-              controller: _baseUrlController,
-              decoration: const InputDecoration(
-                labelText: 'API 地址（可选）',
-                hintText: 'https://api.openai.com/v1',
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              '默认使用 OpenAI 官方地址。如果使用代理或第三方兼容服务，请修改此项。',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 16),
+            if (_mode == LlmMode.direct) ..._buildDirectMode(),
+            if (_mode == LlmMode.server) ..._buildServerMode(),
 
-            // Model
-            TextField(
-              controller: _modelController,
-              decoration: const InputDecoration(
-                labelText: '模型名称（可选）',
-                hintText: 'gpt-4o',
-              ),
-            ),
             const SizedBox(height: 24),
-
             // Save button
             SizedBox(
               width: double.infinity,
@@ -451,38 +457,293 @@ class _AiConfigScreenState extends State<_AiConfigScreen> {
     );
   }
 
-  Future<void> _save() async {
-    final key = _apiKeyController.text.trim();
-    if (key.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入 API Key')),
-      );
+  List<Widget> _buildDirectMode() {
+    return [
+      Text(
+        '配置说明',
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      const SizedBox(height: 8),
+      const Text(
+        '直接在设备上配置 API Key，调用 OpenAI 兼容接口。'
+        'API Key 安全存储在设备本地。',
+        style: TextStyle(color: Colors.grey),
+      ),
+      const SizedBox(height: 24),
+      TextField(
+        controller: _apiKeyController,
+        obscureText: !_showKey,
+        decoration: InputDecoration(
+          labelText: 'API Key',
+          hintText: 'sk-...',
+          suffixIcon: IconButton(
+            icon: Icon(_showKey ? Icons.visibility_off : Icons.visibility),
+            onPressed: () => setState(() => _showKey = !_showKey),
+          ),
+        ),
+      ),
+      const SizedBox(height: 14),
+      TextField(
+        controller: _baseUrlController,
+        decoration: const InputDecoration(
+          labelText: 'API 地址（可选）',
+          hintText: 'https://api.openai.com/v1',
+        ),
+      ),
+      const SizedBox(height: 8),
+      const Text(
+        '默认使用 OpenAI 官方地址。如果使用代理或第三方兼容服务，请修改此项。',
+        style: TextStyle(fontSize: 12, color: Colors.grey),
+      ),
+      const SizedBox(height: 16),
+      TextField(
+        controller: _modelController,
+        decoration: const InputDecoration(
+          labelText: '模型名称（可选）',
+          hintText: 'gpt-4o',
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _buildServerMode() {
+    return [
+      Text(
+        '服务器代理模式',
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      const SizedBox(height: 8),
+      const Text(
+        'AI 请求通过你的服务器转发，API Key 存储在服务端，客户端不暴露。'
+        '需要先注册/登录账号。',
+        style: TextStyle(color: Colors.grey),
+      ),
+      const SizedBox(height: 24),
+      TextField(
+        controller: _serverUrlController,
+        decoration: const InputDecoration(
+          labelText: '服务器地址',
+          hintText: 'https://api.whateattoday.xyz',
+        ),
+      ),
+      const SizedBox(height: 16),
+
+      if (_loggedInUsername == null) ...[
+        TextField(
+          controller: _usernameController,
+          decoration: const InputDecoration(
+            labelText: '用户名',
+            hintText: '输入用户名',
+          ),
+        ),
+        const SizedBox(height: 14),
+        TextField(
+          controller: _passwordController,
+          obscureText: !_showPassword,
+          decoration: InputDecoration(
+            labelText: '密码',
+            hintText: '输入密码',
+            suffixIcon: IconButton(
+              icon:
+                  Icon(_showPassword ? Icons.visibility_off : Icons.visibility),
+              onPressed: () => setState(() => _showPassword = !_showPassword),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (_authError != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              _authError!,
+              style: const TextStyle(color: Colors.red, fontSize: 13),
+            ),
+          ),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _authBusy ? null : _register,
+                child: _authBusy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('注册'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton(
+                onPressed: _authBusy ? null : _login,
+                child: _authBusy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('登录'),
+              ),
+            ),
+          ],
+        ),
+      ] else ...[
+        Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.green, size: 20),
+            const SizedBox(width: 8),
+            Text('已登录：$_loggedInUsername',
+                style: const TextStyle(color: Colors.green)),
+            const Spacer(),
+            TextButton(
+              onPressed: _logout,
+              child: const Text('退出'),
+            ),
+          ],
+        ),
+      ],
+    ];
+  }
+
+  Future<void> _register() async {
+    await _authRequest('/v1/auth/register', '注册');
+  }
+
+  Future<void> _login() async {
+    await _authRequest('/v1/auth/login', '登录');
+  }
+
+  Future<void> _authRequest(String endpoint, String action) async {
+    final serverUrl = _serverUrlController.text.trim();
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
+
+    if (serverUrl.isEmpty) {
+      setState(() => _authError = '请输入服务器地址');
+      return;
+    }
+    if (username.isEmpty) {
+      setState(() => _authError = '请输入用户名');
+      return;
+    }
+    if (password.isEmpty) {
+      setState(() => _authError = '请输入密码');
       return;
     }
 
-    setState(() => _saving = true);
+    setState(() {
+      _authBusy = true;
+      _authError = null;
+    });
 
     try {
-      await widget.llmService.saveConfig(
-        apiKey: key,
-        baseUrl: _baseUrlController.text.trim().isEmpty
-            ? null
-            : _baseUrlController.text.trim(),
-        model: _modelController.text.trim().isEmpty
-            ? null
-            : _modelController.text.trim(),
+      final response = await http.post(
+        Uri.parse('${serverUrl.replaceAll(RegExp(r'/+$'), '')}$endpoint'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'username': username,
+          'password': password,
+        }),
       );
 
       if (!mounted) return;
-      setState(() => _saving = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('配置已保存')));
-      Navigator.of(context).pop(true);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final token = data['data']['token'] as String;
+        await widget.llmService.saveServerConfig(
+          serverUrl: serverUrl,
+          authToken: token,
+          username: username,
+        );
+        setState(() {
+          _authBusy = false;
+          _loggedInUsername = username;
+          _usernameController.clear();
+          _passwordController.clear();
+        });
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$action成功')),
+        );
+      } else {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        setState(() {
+          _authBusy = false;
+          _authError = body['detail']?.toString() ?? '$action失败';
+        });
+      }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _saving = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('保存失败: $e')));
+      setState(() {
+        _authBusy = false;
+        _authError = '网络错误：$e';
+      });
+    }
+  }
+
+  void _logout() {
+    setState(() {
+      _loggedInUsername = null;
+      _authError = null;
+    });
+  }
+
+  Future<void> _save() async {
+    if (_mode == LlmMode.direct) {
+      final key = _apiKeyController.text.trim();
+      if (key.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请输入 API Key')),
+        );
+        return;
+      }
+      setState(() => _saving = true);
+      try {
+        await widget.llmService.saveDirectConfig(
+          apiKey: key,
+          baseUrl: _baseUrlController.text.trim().isEmpty
+              ? null
+              : _baseUrlController.text.trim(),
+          model: _modelController.text.trim().isEmpty
+              ? null
+              : _modelController.text.trim(),
+        );
+        if (!mounted) return;
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('配置已保存')));
+        Navigator.of(context).pop(true);
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('保存失败: $e')));
+      }
+    } else {
+      // Server mode: ensure logged in and server URL saved
+      if (_loggedInUsername == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请先注册或登录')),
+        );
+        return;
+      }
+      setState(() => _saving = true);
+      try {
+        // Config already saved during register/login, just pop
+        if (!mounted) return;
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('服务器代理模式已就绪')),
+        );
+        Navigator.of(context).pop(true);
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('操作失败: $e')));
+      }
     }
   }
 

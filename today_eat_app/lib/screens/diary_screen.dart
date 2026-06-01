@@ -44,7 +44,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
 
   Future<void> _generate() async {
     if (!widget.agentService.isAvailable) {
-      _showSnackBar('请先在设置中配置 AI 模型');
+      _showAiNotConfiguredDialog();
       return;
     }
 
@@ -93,6 +93,23 @@ class _DiaryScreenState extends State<DiaryScreen> {
 
   void _showSnackBar(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  void _showAiNotConfiguredDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('AI 未配置'),
+        content: const Text('AI 功能需要先在设置中配置模型。\n\n'
+            '请前往「设置 → 智能功能 → AI 模型配置」完成设置。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
