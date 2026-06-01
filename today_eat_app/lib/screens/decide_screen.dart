@@ -160,14 +160,20 @@ class _DecideScreenState extends State<DecideScreen> {
 
   Future<void> _refreshSuggestion() async {
     setState(() => _loading = true);
-    final suggestion = await widget.repository.suggestMeal(_mode);
-    if (!mounted) {
-      return;
+    try {
+      final suggestion = await widget.repository.suggestMeal(_mode);
+      if (!mounted) return;
+      setState(() {
+        _suggestion = suggestion;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('获取推荐失败：$e')),
+      );
     }
-    setState(() {
-      _suggestion = suggestion;
-      _loading = false;
-    });
   }
 
   void _resetSuggestionState() {
