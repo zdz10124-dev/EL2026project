@@ -56,6 +56,9 @@ class MealRepository {
   Future<XFile?> pickFromGallery() =>
       _imagePicker.pickImage(source: ImageSource.gallery);
 
+  Future<XFile?> pickVideoFromGallery() =>
+      _imagePicker.pickVideo(source: ImageSource.gallery);
+
   MealDraft? consumeDraftIfFresh() {
     if (!_shouldUseDraftOnNextOpen) {
       return null;
@@ -92,6 +95,14 @@ class MealRepository {
     required String locationInput,
     required String priceText,
     required double? ratingScore,
+    // AI 分析字段（可选）
+    String? aiMainDish,
+    String? aiSideDish,
+    String? aiDrink,
+    String? aiSnack,
+    String? aiSpiceLevel,
+    String? aiIngredients,
+    String? aiCuisine,
   }) async {
     final now = DateTime.now();
     final savedImagePath = await _copyImageToAppDir(sourceImagePath);
@@ -110,7 +121,13 @@ class MealRepository {
       ratingLabel: score == null
           ? '未打分'
           : '${score.toStringAsFixed(score.truncateToDouble() == score ? 0 : 1)}分',
-      mainDish: dishName,
+      mainDish: aiMainDish ?? dishName,
+      sideDish: aiSideDish,
+      drink: aiDrink,
+      snack: aiSnack,
+      spiceLevel: aiSpiceLevel,
+      ingredients: aiIngredients,
+      cuisine: aiCuisine,
     );
 
     await _databaseService.insertRecord(record);

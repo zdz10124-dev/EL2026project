@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/ui_config.dart';
+import '../services/agent_service.dart';
+import '../services/llm_service.dart';
 import '../services/meal_repository.dart';
 import 'capture_screen.dart';
 import 'decide_screen.dart';
@@ -18,12 +20,17 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   late final MealRepository _repository;
+  late final LlmService _llmService;
+  late final AgentService _agentService;
   int _currentIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _repository = MealRepository()..initialize();
+    _llmService = LlmService();
+    _agentService = AgentService(llmService: _llmService);
+    _llmService.loadConfig();
   }
 
   @override
@@ -35,14 +42,26 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      CaptureScreen(config: widget.config, repository: _repository),
+      CaptureScreen(
+        config: widget.config,
+        repository: _repository,
+        agentService: _agentService,
+      ),
       DecideScreen(
         config: widget.config,
         repository: _repository,
         isActive: _currentIndex == 1,
       ),
-      InsightsScreen(config: widget.config, repository: _repository),
-      SettingsScreen(config: widget.config),
+      InsightsScreen(
+        config: widget.config,
+        repository: _repository,
+        agentService: _agentService,
+      ),
+      SettingsScreen(
+        config: widget.config,
+        llmService: _llmService,
+        onConfigChanged: () => setState(() {}),
+      ),
     ];
 
     return Scaffold(

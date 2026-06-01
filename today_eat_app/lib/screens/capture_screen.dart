@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models/meal_draft.dart';
 import '../models/meal_record.dart';
 import '../models/ui_config.dart';
+import '../services/agent_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/rating_stars.dart';
 import '../widgets/section_card.dart';
@@ -16,10 +17,12 @@ class CaptureScreen extends StatefulWidget {
     super.key,
     required this.config,
     required this.repository,
+    this.agentService,
   });
 
   final UiConfig config;
   final MealRepository repository;
+  final AgentService? agentService;
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -88,6 +91,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           ? null
                           : () => _openEditor(fromCamera: false),
                     ),
+                    const SizedBox(width: 20),
+                    _SquareActionButton(
+                      size: layout.secondaryActionSize,
+                      icon: Icons.videocam_outlined,
+                      onPressed: _busy ? null : _pickAndAnalyzeVideo,
+                    ),
                   ],
                 ),
                 if (records.isNotEmpty) ...[
@@ -103,6 +112,31 @@ class _CaptureScreenState extends State<CaptureScreen> {
               ],
             );
           },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickAndAnalyzeVideo() async {
+    final agent = widget.agentService;
+    if (agent == null || !agent.isAvailable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先在设置中配置 AI 模型后使用视频分析')),
+      );
+      return;
+    }
+
+    setState(() => _busy = true);
+    final XFile? file = await widget.repository.pickVideoFromGallery();
+    setState(() => _busy = false);
+
+    if (!mounted || file == null) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _VideoAnalysisScreen(
+          videoPath: file.path,
+          agentService: agent,
         ),
       ),
     );
@@ -124,6 +158,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
         builder: (context) => EditMealScreen(
           config: widget.config,
           repository: widget.repository,
+          agentService: widget.agentService,
           imagePath: file.path,
           fromCamera: fromCamera,
           initialDraft: MealDraft.empty(),
@@ -141,6 +176,7 @@ class EditMealScreen extends StatefulWidget {
     required this.imagePath,
     required this.fromCamera,
     required this.initialDraft,
+    this.agentService,
   });
 
   final UiConfig config;
@@ -148,6 +184,7 @@ class EditMealScreen extends StatefulWidget {
   final String imagePath;
   final bool fromCamera;
   final MealDraft initialDraft;
+  final AgentService? agentService;
 
   @override
   State<EditMealScreen> createState() => _EditMealScreenState();
@@ -161,6 +198,14 @@ class _EditMealScreenState extends State<EditMealScreen> {
   late double _ratingValue;
   bool _ratingTouched = false;
   bool _saving = false;
+  bool _aiAnalyzing = false;
+  String? _aiCuisine;
+  String? _aiSpiceLevel;
+  String? _aiIngredients;
+  String? _aiMainDish;
+  String? _aiSideDish;
+  String? _aiDrink;
+  String? _aiSnack;
 
   @override
   void initState() {
@@ -257,15 +302,71 @@ class _EditMealScreenState extends State<EditMealScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'AI 接口预留：后续可在这里接入图片识别补全菜品、GPS 反查地点。',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
+                    // AI 智能识别
+                    if (widget.agentService != null &&
+                        widget.agentService!.isAvailable) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _aiAnalyzing ? null : _analyzeWithAI,
+                          icon: _aiAnalyzing
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2),
+                                )
+                              : const Icon(Icons.auto_awesome),
+                          label: Text(
+                              _aiAnalyzing ? 'AI 识别中...' : 'AI 识别图片'),
                         ),
                       ),
-                    ),
+                      if (_aiMainDish != null ||
+                          _aiCuisine != null ||
+                          _aiSpiceLevel != null) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.amber.shade200),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('AI 识别结果',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13)),
+                              const SizedBox(height: 4),
+                              if (_aiMainDish != null)
+                                Text('主菜：$_aiMainDish',
+                                    style: const TextStyle(fontSize: 12)),
+                              if (_aiSideDish != null)
+                                Text('配菜：$_aiSideDish',
+                                    style: const TextStyle(fontSize: 12)),
+                              if (_aiDrink != null)
+                                Text('饮品：$_aiDrink',
+                                    style: const TextStyle(fontSize: 12)),
+                              if (_aiSnack != null)
+                                Text('小吃：$_aiSnack',
+                                    style: const TextStyle(fontSize: 12)),
+                              if (_aiCuisine != null)
+                                Text('菜系：$_aiCuisine',
+                                    style: const TextStyle(fontSize: 12)),
+                              if (_aiSpiceLevel != null)
+                                Text('辣度：$_aiSpiceLevel',
+                                    style: const TextStyle(fontSize: 12)),
+                              if (_aiIngredients != null)
+                                Text('食材：$_aiIngredients',
+                                    style: const TextStyle(fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ],
                 ),
               ),
@@ -357,6 +458,13 @@ class _EditMealScreenState extends State<EditMealScreen> {
       locationInput: _locationController.text,
       priceText: priceText,
       ratingScore: _ratingTouched ? _ratingValue : null,
+      aiMainDish: _aiMainDish,
+      aiSideDish: _aiSideDish,
+      aiDrink: _aiDrink,
+      aiSnack: _aiSnack,
+      aiSpiceLevel: _aiSpiceLevel,
+      aiIngredients: _aiIngredients,
+      aiCuisine: _aiCuisine,
     );
     if (!mounted) {
       return;
@@ -366,6 +474,37 @@ class _EditMealScreenState extends State<EditMealScreen> {
       context,
     ).showSnackBar(const SnackBar(content: Text('已保存到本地数据库')));
     Navigator.of(context).pop();
+  }
+
+  Future<void> _analyzeWithAI() async {
+    final agent = widget.agentService;
+    if (agent == null || !agent.isAvailable) return;
+
+    setState(() => _aiAnalyzing = true);
+    try {
+      final result = await agent.analyzeFoodImage(_imagePath);
+      if (!mounted) return;
+      setState(() {
+        _aiAnalyzing = false;
+        _aiMainDish = result.mainDish;
+        _aiSideDish = result.sideDish;
+        _aiDrink = result.drink;
+        _aiSnack = result.snack;
+        _aiCuisine = result.cuisine;
+        _aiSpiceLevel = result.spiceLevel;
+        _aiIngredients = result.ingredients;
+        // 如果用户还没填菜品，用 AI 识别的结果填充
+        if (_dishController.text.isEmpty && result.dishName.isNotEmpty) {
+          _dishController.text = result.dishName;
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _aiAnalyzing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('AI 识别失败：$e')),
+      );
+    }
   }
 }
 
@@ -483,6 +622,115 @@ class _SquareActionButton extends StatelessWidget {
         ),
         onPressed: onPressed,
         child: Icon(icon),
+      ),
+    );
+  }
+}
+
+/// 视频分析结果页面
+class _VideoAnalysisScreen extends StatefulWidget {
+  const _VideoAnalysisScreen({
+    required this.videoPath,
+    required this.agentService,
+  });
+
+  final String videoPath;
+  final AgentService agentService;
+
+  @override
+  State<_VideoAnalysisScreen> createState() => _VideoAnalysisScreenState();
+}
+
+class _VideoAnalysisScreenState extends State<_VideoAnalysisScreen> {
+  bool _analyzing = true;
+  String? _error;
+  String? _result;
+
+  @override
+  void initState() {
+    super.initState();
+    _analyze();
+  }
+
+  Future<void> _analyze() async {
+    try {
+      final result =
+          await widget.agentService.analyzeFoodVideo(widget.videoPath);
+      if (!mounted) return;
+      setState(() {
+        _analyzing = false;
+        _result = [
+          if (result.dishName.isNotEmpty) '菜品：${result.dishName}',
+          if (result.mainDish != null) '主菜：${result.mainDish}',
+          if (result.sideDish != null) '配菜：${result.sideDish}',
+          if (result.drink != null) '饮品：${result.drink}',
+          if (result.snack != null) '小吃：${result.snack}',
+          if (result.spiceLevel != null) '辣度：${result.spiceLevel}',
+          if (result.ingredients != null) '食材：${result.ingredients}',
+          if (result.cuisine != null) '菜系：${result.cuisine}',
+        ].join('\n');
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _analyzing = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('视频分析')),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_analyzing) ...[
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.only(top: 80),
+                  child: Column(
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('正在分析视频中的食物...'),
+                    ],
+                  ),
+                ),
+              ),
+            ] else if (_error != null) ...[
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 80),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.error_outline,
+                          size: 48, color: Colors.red),
+                      const SizedBox(height: 16),
+                      Text('分析失败', style: TextStyle(color: Colors.red)),
+                      const SizedBox(height: 8),
+                      Text(_error!,
+                          style: const TextStyle(fontSize: 13),
+                          textAlign: TextAlign.center),
+                    ],
+                  ),
+                ),
+              ),
+            ] else ...[
+              const Icon(Icons.check_circle_outline,
+                  size: 48, color: Colors.green),
+              const SizedBox(height: 16),
+              const Text('视频分析结果',
+                  style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              Text(_result ?? ''),
+            ],
+          ],
+        ),
       ),
     );
   }
