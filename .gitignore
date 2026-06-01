@@ -5,28 +5,28 @@ backend/uploads/
 .vscode/
 
 # Flutter 工具 & 构建产物
-.dart_tool/
-build/
+**/.dart_tool/
+**/build/
 *.iml
 
 # Android 生成文件
-android/.gradle/
-android/app/build/
-android/local.properties
-android/key.properties
-android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+**/android/.gradle/
+**/android/app/build/
+**/android/local.properties
+**/android/key.properties
+**/android/**/GeneratedPluginRegistrant.java
 
 # iOS 生成文件
-ios/Pods/
-ios/.symlinks/
-ios/Flutter/Generated.xcconfig
-ios/Flutter/ephemeral/
-ios/Flutter/flutter_export_environment.sh
-ios/Runner/GeneratedPluginRegistrant.*
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/ephemeral/
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/**/GeneratedPluginRegistrant.*
 
 # Windows 生成文件
-windows/flutter/ephemeral/
-windows/flutter/generated_*
-windows/runner/Debug/
-windows/runner/Release/
-windows/runner/x64/
+**/windows/flutter/ephemeral/
+**/windows/flutter/generated_*
+**/windows/runner/Debug/
+**/windows/runner/Release/
+**/windows/runner/x64/
