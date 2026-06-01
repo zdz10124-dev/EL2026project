@@ -14,6 +14,7 @@ android/.gradle/
 android/app/build/
 android/local.properties
 android/key.properties
+android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
 
 # iOS 生成文件
 ios/Pods/
@@ -25,6 +26,7 @@ ios/Runner/GeneratedPluginRegistrant.*
 
 # Windows 生成文件
 windows/flutter/ephemeral/
+windows/flutter/generated_*
 windows/runner/Debug/
 windows/runner/Release/
 windows/runner/x64/
