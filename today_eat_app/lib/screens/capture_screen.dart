@@ -8,6 +8,7 @@ import '../models/meal_draft.dart';
 import '../models/meal_record.dart';
 import '../models/ui_config.dart';
 import '../services/agent_service.dart';
+import '../services/location_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/rating_stars.dart';
 import '../widgets/section_card.dart';
@@ -191,6 +192,7 @@ class EditMealScreen extends StatefulWidget {
 }
 
 class _EditMealScreenState extends State<EditMealScreen> {
+  final LocationService _locationService = LocationService();
   late final TextEditingController _dishController;
   late final TextEditingController _locationController;
   late final TextEditingController _priceController;
@@ -198,6 +200,7 @@ class _EditMealScreenState extends State<EditMealScreen> {
   late double _ratingValue;
   bool _ratingTouched = false;
   bool _saving = false;
+  // AI fields
   bool _aiAnalyzing = false;
   String? _aiCuisine;
   String? _aiSpiceLevel;
@@ -206,6 +209,11 @@ class _EditMealScreenState extends State<EditMealScreen> {
   String? _aiSideDish;
   String? _aiDrink;
   String? _aiSnack;
+  // GPS fields
+  bool _locating = true;
+  String _locationStatus = '定位中...';
+  int _locationRequestId = 0;
+  LocationResult? _lastLocationResult;
 
   @override
   void initState() {
@@ -220,6 +228,7 @@ class _EditMealScreenState extends State<EditMealScreen> {
     );
     _ratingValue = widget.initialDraft.ratingScore ?? 0;
     _ratingTouched = widget.initialDraft.ratingScore != null;
+    _beginGpsLookup();
   }
 
   @override
@@ -299,6 +308,42 @@ class _EditMealScreenState extends State<EditMealScreen> {
                       alignment: Alignment.centerLeft,
                       child: Text(
                         '记录时间：${DateFormat('MM/dd HH:mm').format(DateTime.now())}',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.location_on_outlined,
+                            size: 18,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              _locating
+                                  ? 'GPS 定位中...'
+                                  : 'GPS 地点：$_locationStatus',
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: '重新定位',
+                            onPressed: _locating ? null : _beginGpsLookup,
+                            icon: const Icon(Icons.refresh_rounded, size: 18),
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 28,
+                              minHeight: 28,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -430,6 +475,7 @@ class _EditMealScreenState extends State<EditMealScreen> {
       _ratingTouched = draft.ratingScore != null;
       _ratingValue = draft.ratingScore ?? 0;
     });
+    _beginGpsLookup();
   }
 
   Future<void> _handleSave() async {
@@ -465,6 +511,11 @@ class _EditMealScreenState extends State<EditMealScreen> {
       aiSpiceLevel: _aiSpiceLevel,
       aiIngredients: _aiIngredients,
       aiCuisine: _aiCuisine,
+      province: _lastLocationResult?.province,
+      city: _lastLocationResult?.city,
+      district: _lastLocationResult?.district,
+      latitude: _lastLocationResult?.latitude,
+      longitude: _lastLocationResult?.longitude,
     );
     if (!mounted) {
       return;
@@ -505,6 +556,38 @@ class _EditMealScreenState extends State<EditMealScreen> {
         SnackBar(content: Text('AI 识别失败：$e')),
       );
     }
+  }
+
+  void _beginGpsLookup() {
+    _locationRequestId++;
+    setState(() {
+      _locating = true;
+      _locationStatus = '定位中...';
+    });
+    _loadGpsAddress(_locationRequestId);
+  }
+
+  Future<void> _loadGpsAddress(int requestId) async {
+    final result = await _locationService.getCurrentAddress(
+      onUpdate: (updated) {
+        if (!mounted || requestId != _locationRequestId) {
+          return;
+        }
+        setState(() {
+          _lastLocationResult = updated;
+          _locating = false;
+          _locationStatus = updated.message;
+        });
+      },
+    );
+    if (!mounted || requestId != _locationRequestId) {
+      return;
+    }
+    setState(() {
+      _lastLocationResult = result;
+      _locating = false;
+      _locationStatus = result.message;
+    });
   }
 }
 

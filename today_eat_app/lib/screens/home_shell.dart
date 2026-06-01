@@ -59,6 +59,7 @@ class _HomeShellState extends State<HomeShell> {
       ),
       SettingsScreen(
         config: widget.config,
+        repository: _repository,
         llmService: _llmService,
         onConfigChanged: () => setState(() {}),
       ),
