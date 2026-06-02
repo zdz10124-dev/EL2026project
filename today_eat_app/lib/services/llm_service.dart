@@ -248,56 +248,6 @@ class LlmService {
     return _parseResponse(response);
   }
 
-  /// Call LLM with multiple image frames (for video analysis).
-  Future<Map<String, dynamic>> callLlmWithImages({
-    required String systemPrompt,
-    required String text,
-    required List<String> imageBase64List,
-    double? temperature,
-  }) async {
-    _ensureConfigured();
-
-    final contentParts = <Map<String, dynamic>>[
-      {'type': 'text', 'text': text},
-      ...imageBase64List.map((b64) => {
-            'type': 'image_url',
-            'image_url': {'url': 'data:image/jpeg;base64,$b64'},
-          }),
-    ];
-
-    if (_config!.mode == LlmMode.server) {
-      return _callServerChat(
-        messages: [
-          {'role': 'system', 'content': systemPrompt},
-          {'role': 'user', 'content': contentParts},
-        ],
-        temperature: temperature,
-      );
-    }
-
-    final c = _config!;
-    final body = {
-      'model': c.model,
-      'messages': [
-        {'role': 'system', 'content': systemPrompt},
-        {'role': 'user', 'content': contentParts},
-      ],
-      'response_format': {'type': 'json_object'},
-      'temperature': temperature ?? c.temperature,
-    };
-
-    final response = await http.post(
-      Uri.parse('${c.baseUrl}/chat/completions'),
-      headers: {
-        'Authorization': 'Bearer ${c.apiKey}',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(body),
-    );
-
-    return _parseResponse(response);
-  }
-
   // ===== Server mode internals =====
 
   Future<Map<String, dynamic>> _callServerChat({

@@ -92,12 +92,6 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           ? null
                           : () => _openEditor(fromCamera: false),
                     ),
-                    const SizedBox(width: 20),
-                    _SquareActionButton(
-                      size: layout.secondaryActionSize,
-                      icon: Icons.videocam_outlined,
-                      onPressed: _busy ? null : _pickAndAnalyzeVideo,
-                    ),
                   ],
                 ),
                 if (records.isNotEmpty) ...[
@@ -113,29 +107,6 @@ class _CaptureScreenState extends State<CaptureScreen> {
               ],
             );
           },
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickAndAnalyzeVideo() async {
-    final agent = widget.agentService;
-    if (agent == null || !agent.isAvailable) {
-      _showAiNotConfiguredDialog();
-      return;
-    }
-
-    setState(() => _busy = true);
-    final XFile? file = await widget.repository.pickVideoFromGallery();
-    setState(() => _busy = false);
-
-    if (!mounted || file == null) return;
-
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _VideoAnalysisScreen(
-          videoPath: file.path,
-          agentService: agent,
         ),
       ),
     );
@@ -740,115 +711,6 @@ class _SquareActionButton extends StatelessWidget {
         ),
         onPressed: onPressed,
         child: Icon(icon),
-      ),
-    );
-  }
-}
-
-/// 视频分析结果页面
-class _VideoAnalysisScreen extends StatefulWidget {
-  const _VideoAnalysisScreen({
-    required this.videoPath,
-    required this.agentService,
-  });
-
-  final String videoPath;
-  final AgentService agentService;
-
-  @override
-  State<_VideoAnalysisScreen> createState() => _VideoAnalysisScreenState();
-}
-
-class _VideoAnalysisScreenState extends State<_VideoAnalysisScreen> {
-  bool _analyzing = true;
-  String? _error;
-  String? _result;
-
-  @override
-  void initState() {
-    super.initState();
-    _analyze();
-  }
-
-  Future<void> _analyze() async {
-    try {
-      final result =
-          await widget.agentService.analyzeFoodVideo(widget.videoPath);
-      if (!mounted) return;
-      setState(() {
-        _analyzing = false;
-        _result = [
-          if (result.dishName.isNotEmpty) '菜品：${result.dishName}',
-          if (result.mainDish != null) '主菜：${result.mainDish}',
-          if (result.sideDish != null) '配菜：${result.sideDish}',
-          if (result.drink != null) '饮品：${result.drink}',
-          if (result.snack != null) '小吃：${result.snack}',
-          if (result.spiceLevel != null) '辣度：${result.spiceLevel}',
-          if (result.ingredients != null) '食材：${result.ingredients}',
-          if (result.cuisine != null) '菜系：${result.cuisine}',
-        ].join('\n');
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _analyzing = false;
-        _error = e.toString();
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('视频分析')),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_analyzing) ...[
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.only(top: 80),
-                  child: Column(
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 16),
-                      Text('正在分析视频中的食物...'),
-                    ],
-                  ),
-                ),
-              ),
-            ] else if (_error != null) ...[
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 80),
-                  child: Column(
-                    children: [
-                      const Icon(Icons.error_outline,
-                          size: 48, color: Colors.red),
-                      const SizedBox(height: 16),
-                      Text('分析失败', style: TextStyle(color: Colors.red)),
-                      const SizedBox(height: 8),
-                      Text(_error!,
-                          style: const TextStyle(fontSize: 13),
-                          textAlign: TextAlign.center),
-                    ],
-                  ),
-                ),
-              ),
-            ] else ...[
-              const Icon(Icons.check_circle_outline,
-                  size: 48, color: Colors.green),
-              const SizedBox(height: 16),
-              const Text('视频分析结果',
-                  style: TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              Text(_result ?? ''),
-            ],
-          ],
-        ),
       ),
     );
   }

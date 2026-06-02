@@ -30,6 +30,16 @@ class PreferenceAnalysis {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+    'favorite_cuisines': favoriteCuisines,
+    'favorite_ingredients': favoriteIngredients,
+    'spice_preference': spicePreference,
+    'favorite_dishes': favoriteDishes,
+    'favorite_locations': favoriteLocations,
+    'trends': trends,
+    'summary': summary,
+  };
+
   static List<String> _strList(dynamic value) {
     if (value == null) return [];
     if (value is List) return value.map((e) => e.toString()).toList();

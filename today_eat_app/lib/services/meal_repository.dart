@@ -149,9 +149,6 @@ class MealRepository {
   Future<XFile?> pickFromGallery() =>
       _imagePicker.pickImage(source: ImageSource.gallery);
 
-  Future<XFile?> pickVideoFromGallery() =>
-      _imagePicker.pickVideo(source: ImageSource.gallery);
-
   MealDraft? consumeDraftIfFresh() {
     if (!_shouldUseDraftOnNextOpen) {
       return null;

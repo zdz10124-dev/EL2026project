@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:video_thumbnail/video_thumbnail.dart';
-
 import '../models/ai_analysis.dart';
 import '../models/food_diary.dart';
 import '../models/nutrition_analysis.dart';
@@ -34,29 +32,7 @@ class AgentService {
     return ImageAnalysisResult.fromJson(result);
   }
 
-  // ===== 2. 视频分析 =====
-
-  /// 分析美食视频，提取关键帧并识别菜品
-  Future<ImageAnalysisResult> analyzeFoodVideo(String videoPath) async {
-    final frames = await _extractVideoFrames(videoPath);
-    if (frames.isEmpty) {
-      throw LlmException('无法从视频中提取画面');
-    }
-
-    // 最多取 5 帧
-    final framesToSend = frames.take(5).toList();
-
-    final result = await _llm.callLlmWithImages(
-      systemPrompt: _imageAnalysisPrompt,
-      text:
-          '这是从一段美食视频中提取的 ${framesToSend.length} 帧画面，请分析视频中的食物，输出识别结果。',
-      imageBase64List: framesToSend,
-    );
-
-    return ImageAnalysisResult.fromJson(result);
-  }
-
-  // ===== 3. 生成美食日记 =====
+  // ===== 2. 生成美食日记 =====
 
   /// 基于一段时间内的用餐记录生成美食日记
   Future<FoodDiary> generateFoodDiary({
@@ -78,7 +54,7 @@ $recordsText''',
     return FoodDiary.fromJson(result);
   }
 
-  // ===== 4. 偏好分析 =====
+  // ===== 3. 偏好分析 =====
 
   /// 分析用户饮食偏好
   Future<PreferenceAnalysis> analyzePreferences(
@@ -97,7 +73,7 @@ $recordsText''',
     return PreferenceAnalysis.fromJson(result);
   }
 
-  // ===== 5. 营养分析 =====
+  // ===== 4. 营养分析 =====
 
   /// 分析用户的营养摄入情况
   Future<NutritionAnalysis> analyzeNutrition(List<MealRecord> records) async {
@@ -123,29 +99,6 @@ $recordsText''',
     }
     final bytes = await file.readAsBytes();
     return base64Encode(bytes);
-  }
-
-  Future<List<String>> _extractVideoFrames(String videoPath) async {
-    final frames = <String>[];
-    try {
-      // 提取视频时长，取 5 个关键帧
-      for (var i = 0; i < 5; i++) {
-        final timeMs = i * 2000; // 每 2 秒取一帧
-        final thumb = await VideoThumbnail.thumbnailData(
-          video: videoPath,
-          imageFormat: ImageFormat.JPEG,
-          maxWidth: 512,
-          timeMs: timeMs,
-          quality: 70,
-        );
-        if (thumb != null) {
-          frames.add(base64Encode(thumb));
-        }
-      }
-    } catch (_) {
-      // 如果缩略图提取失败，返回已有的帧
-    }
-    return frames;
   }
 
   String _formatRecordsForPrompt(List<MealRecord> records) {
