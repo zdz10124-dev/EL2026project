@@ -149,6 +149,9 @@ class MealRepository {
   Future<XFile?> pickFromGallery() =>
       _imagePicker.pickImage(source: ImageSource.gallery);
 
+  Future<XFile?> pickVideoFromGallery() =>
+      _imagePicker.pickVideo(source: ImageSource.gallery);
+
   MealDraft? consumeDraftIfFresh() {
     if (!_shouldUseDraftOnNextOpen) {
       return null;
@@ -185,6 +188,13 @@ class MealRepository {
     required String locationInput,
     required String priceText,
     required double? ratingScore,
+    String? aiMainDish,
+    String? aiSideDish,
+    String? aiDrink,
+    String? aiSnack,
+    String? aiSpiceLevel,
+    String? aiIngredients,
+    String? aiCuisine,
     String? commentInput,
     String? province,
     String? city,
@@ -203,6 +213,13 @@ class MealRepository {
       locationInput: locationInput,
       priceText: priceText,
       ratingScore: ratingScore,
+      aiMainDish: aiMainDish,
+      aiSideDish: aiSideDish,
+      aiDrink: aiDrink,
+      aiSnack: aiSnack,
+      aiSpiceLevel: aiSpiceLevel,
+      aiIngredients: aiIngredients,
+      aiCuisine: aiCuisine,
       commentInput: commentInput,
       province: province,
       city: city,
@@ -265,6 +282,13 @@ class MealRepository {
     required String locationInput,
     required String priceText,
     required double? ratingScore,
+    String? aiMainDish,
+    String? aiSideDish,
+    String? aiDrink,
+    String? aiSnack,
+    String? aiSpiceLevel,
+    String? aiIngredients,
+    String? aiCuisine,
     String? commentInput,
     String? province,
     String? city,
@@ -289,7 +313,13 @@ class MealRepository {
       ratingLabel: score == null
           ? '未打分'
           : '${score.toStringAsFixed(score.truncateToDouble() == score ? 0 : 1)}分',
-      mainDish: dishName,
+      mainDish: aiMainDish ?? dishName,
+      sideDish: aiSideDish,
+      drink: aiDrink,
+      snack: aiSnack,
+      spiceLevel: aiSpiceLevel,
+      ingredients: aiIngredients,
+      cuisine: aiCuisine,
       comment: _nullableText(commentInput),
       province: _nullableText(province),
       city: _nullableText(city),

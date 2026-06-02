@@ -5,51 +5,28 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/meal_record.dart';
-import '../models/recommendation_models.dart';
 import '../models/ui_config.dart';
+import '../services/agent_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/section_card.dart';
 import 'network_recommendation_screen.dart';
+import 'nutrition_screen.dart';
+import 'preference_screen.dart';
 
 class InsightsScreen extends StatelessWidget {
   const InsightsScreen({
     super.key,
     required this.config,
     required this.repository,
+    this.agentService,
   });
 
   final UiConfig config;
   final MealRepository repository;
+  final AgentService? agentService;
 
   @override
   Widget build(BuildContext context) {
-    final cards = [
-      (
-        icon: Icons.menu_book_rounded,
-        title: '美食日记',
-        subtitle: '按时间生成可翻页的吃饭笔记预览',
-        page: JournalGeneratorPage(repository: repository),
-      ),
-      (
-        icon: Icons.analytics_outlined,
-        title: '统计分析',
-        subtitle: '查看金额、菜品、地点与评分分布',
-        page: StatsAnalysisPage(repository: repository),
-      ),
-      (
-        icon: Icons.spa_outlined,
-        title: '营养分析',
-        subtitle: '保留 AI 总评与营养接口位置',
-        page: const NutritionAnalysisPage(),
-      ),
-      (
-        icon: Icons.public_rounded,
-        title: '联网推荐',
-        subtitle: '按地区、菜系、价格区间筛选推荐',
-        page: NetworkRecommendationPage(repository: repository),
-      ),
-    ];
-
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.symmetric(
@@ -74,46 +51,7 @@ class InsightsScreen extends StatelessWidget {
                       : '从日记、统计、营养和推荐四个方向继续展开。',
                 ),
                 const SizedBox(height: 18),
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: cards.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 0.95,
-                  ),
-                  itemBuilder: (context, index) {
-                    final card = cards[index];
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(24),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(builder: (_) => card.page),
-                      ),
-                      child: SectionCard(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(card.icon, size: 28),
-                            const SizedBox(height: 14),
-                            Text(
-                              card.title,
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                            const SizedBox(height: 8),
-                            Expanded(child: Text(card.subtitle)),
-                            const SizedBox(height: 10),
-                            const Align(
-                              alignment: Alignment.centerRight,
-                              child: Icon(Icons.arrow_forward_rounded),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                _buildGrid(context),
               ],
             );
           },
@@ -121,7 +59,109 @@ class InsightsScreen extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildGrid(BuildContext context) {
+    final cards = <_FeatureCardData>[
+      _FeatureCardData(
+        icon: Icons.menu_book_rounded,
+        title: '美食日记',
+        subtitle: '按时间生成可翻页的吃饭笔记预览',
+        page: JournalGeneratorPage(repository: repository),
+      ),
+      _FeatureCardData(
+        icon: Icons.analytics_outlined,
+        title: '统计分析',
+        subtitle: '查看金额、菜品、地点与评分分布',
+        page: StatsAnalysisPage(repository: repository),
+      ),
+      _FeatureCardData(
+        icon: Icons.restaurant_menu,
+        title: '营养分析',
+        subtitle: agentService?.isAvailable == true
+            ? 'AI 评估你的营养摄入'
+            : '需先配置 AI 模型',
+        page: agentService == null
+            ? null
+            : NutritionScreen(repository: repository, agentService: agentService!),
+      ),
+      _FeatureCardData(
+        icon: Icons.public_rounded,
+        title: '联网推荐',
+        subtitle: '按地区、菜系、价格区间筛选推荐',
+        page: NetworkRecommendationPage(repository: repository),
+      ),
+      _FeatureCardData(
+        icon: Icons.person_outline,
+        title: '偏好分析',
+        subtitle: agentService?.isAvailable == true
+            ? 'AI 分析你的口味偏好'
+            : '需先配置 AI 模型',
+        page: agentService == null
+            ? null
+            : PreferenceScreen(repository: repository, agentService: agentService!),
+      ),
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: cards.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.95,
+      ),
+      itemBuilder: (context, index) {
+        final card = cards[index];
+        return InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: card.page == null
+              ? null
+              : () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => card.page!),
+                  ),
+          child: SectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(card.icon, size: 28),
+                const SizedBox(height: 14),
+                Text(
+                  card.title,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                Expanded(child: Text(card.subtitle)),
+                const SizedBox(height: 10),
+                const Align(
+                  alignment: Alignment.centerRight,
+                  child: Icon(Icons.arrow_forward_rounded),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
+
+class _FeatureCardData {
+  const _FeatureCardData({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.page,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget? page;
+}
+
+// ===== 美食日记（笔记本风格） =====
 
 class JournalGeneratorPage extends StatefulWidget {
   const JournalGeneratorPage({super.key, required this.repository});
@@ -218,7 +258,7 @@ class _JournalGeneratorPageState extends State<JournalGeneratorPage> {
                       Text('样式：$_style'),
                       const SizedBox(height: 8),
                       Text(
-                        '将生成 ${journalEntries.length} 个日期段，按“凌晨 4 点到次日凌晨 4 点”为一天分组。',
+                        '将生成 ${journalEntries.length} 个日期段，按"凌晨 4 点到次日凌晨 4 点"为一天分组。',
                       ),
                       const SizedBox(height: 12),
                       Text(
@@ -369,6 +409,8 @@ class _JournalNotebookPageState extends State<JournalNotebookPage> {
     return pages.isEmpty ? [const <_NotebookItem>[]] : pages;
   }
 }
+
+// ===== 统计分析 =====
 
 class StatsAnalysisPage extends StatefulWidget {
   const StatsAnalysisPage({super.key, required this.repository});
@@ -540,242 +582,7 @@ class _StatsAnalysisPageState extends State<StatsAnalysisPage> {
   }
 }
 
-class NutritionAnalysisPage extends StatefulWidget {
-  const NutritionAnalysisPage({super.key});
-
-  @override
-  State<NutritionAnalysisPage> createState() => _NutritionAnalysisPageState();
-}
-
-class _NutritionAnalysisPageState extends State<NutritionAnalysisPage> {
-  String _range = '本周';
-
-  @override
-  Widget build(BuildContext context) {
-    final items = ['蔬菜摄入', '蛋白质摄入', '饮品情况', '重口味情况', '规律程度'];
-    return Scaffold(
-      appBar: AppBar(title: const Text('营养分析')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: '本周', label: Text('本周')),
-              ButtonSegment(value: '本月', label: Text('本月')),
-            ],
-            selected: {_range},
-            onSelectionChanged: (values) =>
-                setState(() => _range = values.first),
-          ),
-          const SizedBox(height: 18),
-          const SectionCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('总评'),
-                SizedBox(height: 8),
-                Text('功能准备中。后续这里将显示 AI 生成的总体营养评价。'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...items.map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: SectionCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(item, style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 8),
-                    const Text('接口预留中，当前先保留固定布局。'),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class RecommendationListPage extends StatefulWidget {
-  const RecommendationListPage({super.key, required this.repository});
-
-  final MealRepository repository;
-
-  @override
-  State<RecommendationListPage> createState() => _RecommendationListPageState();
-}
-
-class _RecommendationListPageState extends State<RecommendationListPage> {
-  String _region = '全部';
-  String _cuisine = '全部';
-  String _priceRange = '全部';
-  String _sort = '评分优先';
-
-  @override
-  Widget build(BuildContext context) {
-    final all = widget.repository.getMockRecommendations();
-    var items = all.where((item) {
-      final regionOk = _region == '全部' || item.region == _region;
-      final cuisineOk = _cuisine == '全部' || item.cuisine == _cuisine;
-      final priceOk =
-          _priceRange == '全部' ||
-          (_priceRange == '20元以下' && item.price < 20) ||
-          (_priceRange == '20-30元' && item.price >= 20 && item.price <= 30) ||
-          (_priceRange == '30元以上' && item.price > 30);
-      return regionOk && cuisineOk && priceOk;
-    }).toList();
-
-    if (_sort == '评分优先') {
-      items.sort((a, b) => b.rating.compareTo(a.rating));
-    } else {
-      items.sort((a, b) => a.price.compareTo(b.price));
-    }
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('联网推荐')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              _FilterChip(
-                label: '地区',
-                value: _region,
-                options: const ['全部', '鼓楼校区', '仙林校区', '上海'],
-                onChanged: (value) => setState(() => _region = value),
-              ),
-              _FilterChip(
-                label: '菜系',
-                value: _cuisine,
-                options: const ['全部', '家常菜', '川味', '简餐'],
-                onChanged: (value) => setState(() => _cuisine = value),
-              ),
-              _FilterChip(
-                label: '价格区间',
-                value: _priceRange,
-                options: const ['全部', '20元以下', '20-30元', '30元以上'],
-                onChanged: (value) => setState(() => _priceRange = value),
-              ),
-              _FilterChip(
-                label: '排序',
-                value: _sort,
-                options: const ['评分优先', '价格优先'],
-                onChanged: (value) => setState(() => _sort = value),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          if (items.isEmpty)
-            const SectionCard(child: Text('暂时没有可用推荐'))
-          else
-            ...items.map(
-              (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: SectionCard(
-                  child: InkWell(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => RecommendationDetailPage(item: item),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          height: 120,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(18),
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFD96C3D), Color(0xFFFFC46C)],
-                            ),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            item.title,
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(color: Colors.white),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          item.title,
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '${item.store} · ${item.region} · ¥${item.price.toStringAsFixed(0)}',
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '评分 ${item.rating.toStringAsFixed(1)} · ${item.reason}',
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class RecommendationDetailPage extends StatelessWidget {
-  const RecommendationDetailPage({super.key, required this.item});
-
-  final RecommendationItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(item.title)),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Container(
-            height: 220,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              gradient: const LinearGradient(
-                colors: [Color(0xFFD96C3D), Color(0xFFFFC46C)],
-              ),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              item.title,
-              style: Theme.of(
-                context,
-              ).textTheme.headlineMedium?.copyWith(color: Colors.white),
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text(item.store, style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          Text(
-            '${item.region} · ${item.cuisine} · ¥${item.price.toStringAsFixed(0)}',
-          ),
-          const SizedBox(height: 8),
-          Text('推荐评分：${item.rating.toStringAsFixed(1)}'),
-          const SizedBox(height: 18),
-          const Text('推荐理由'),
-          const SizedBox(height: 8),
-          Text(item.reason),
-          const SizedBox(height: 18),
-          const Text('详细介绍'),
-          const SizedBox(height: 8),
-          Text(item.description),
-        ],
-      ),
-    );
-  }
-}
+// ===== 通用小组件 =====
 
 class _DateCard extends StatelessWidget {
   const _DateCard({
@@ -1028,39 +835,6 @@ class _StatExpandableTile extends StatelessWidget {
                     .toList(),
         ),
       ),
-    );
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.value,
-    required this.options,
-    required this.onChanged,
-  });
-
-  final String label;
-  final String value;
-  final List<String> options;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButton<String>(
-      value: value,
-      underline: const SizedBox.shrink(),
-      items: options
-          .map(
-            (option) =>
-                DropdownMenuItem(value: option, child: Text('$label：$option')),
-          )
-          .toList(),
-      onChanged: (selected) {
-        if (selected != null) {
-          onChanged(selected);
-        }
-      },
     );
   }
 }

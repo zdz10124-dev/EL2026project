@@ -19,8 +19,15 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+import json as json_lib
+
+import bcrypt
+import httpx
+import jwt
+from fastapi import (FastAPI, File, Form, HTTPException, Request, UploadFile,
+                     status)
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -31,6 +38,15 @@ UPLOAD_DIR = APP_DIR / "uploads"
 LOCAL_TIMEZONE = timezone(timedelta(hours=8))
 RECOMMENDATION_THRESHOLD = 55.0
 
+# ---- Auth & AI Proxy 配置 ----
+JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-in-production")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_HOURS = 72
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+
+security = HTTPBearer(auto_error=False)
+
 
 class SearchRequest(BaseModel):
     distance_buckets: list[str] = Field(default_factory=list)
@@ -39,6 +55,28 @@ class SearchRequest(BaseModel):
     page_size: int = 12
     latitude: float | None = None
     longitude: float | None = None
+
+
+class UserRegister(BaseModel):
+    username: str = Field(min_length=2, max_length=32)
+    password: str = Field(min_length=4, max_length=128)
+
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+
+class AiChatMessage(BaseModel):
+    role: str
+    content: Any
+
+
+class AiChatRequest(BaseModel):
+    model: str = "gpt-4o"
+    messages: list[AiChatMessage]
+    temperature: float = 0.3
+    response_format: dict[str, str] | None = None
 
 
 app = FastAPI(title="今天吃什么 联网推荐服务", version="1.0.0")
@@ -66,6 +104,16 @@ def get_connection() -> Iterator[sqlite3.Connection]:
 def initialize_database() -> None:
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     with get_connection() as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users(
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS uploaded_records(
@@ -598,3 +646,128 @@ def recommendation_detail(record_id: str, request: Request) -> dict[str, Any]:
         "aggregate": aggregate,
     }
     return {"success": True, "message": "ok", "data": data}
+
+
+# ===== 用户认证 =====
+
+
+def _hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def _check_password(password: str, password_hash: str) -> bool:
+    return bcrypt.checkpw(password.encode(), password_hash.encode())
+
+
+def _create_token(user_id: str, username: str) -> str:
+    payload = {
+        "user_id": user_id,
+        "username": username,
+        "exp": datetime.now(LOCAL_TIMEZONE) + timedelta(hours=JWT_EXPIRE_HOURS),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def _get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+) -> dict:
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="未登录")
+    try:
+        payload = jwt.decode(
+            credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM]
+        )
+        return {"user_id": payload["user_id"], "username": payload["username"]}
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="登录已过期，请重新登录")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="无效的登录凭证")
+
+
+@app.post("/v1/auth/register")
+def register(payload: UserRegister) -> dict:
+    username = payload.username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="用户名不能为空")
+
+    password_hash = _hash_password(payload.password)
+    user_id = f"user_{uuid.uuid4().hex}"
+    now = now_iso()
+
+    with get_connection() as connection:
+        existing = connection.execute(
+            "SELECT id FROM users WHERE username = ?", (username,)
+        ).fetchone()
+        if existing:
+            raise HTTPException(status_code=409, detail="用户名已存在")
+        connection.execute(
+            "INSERT INTO users(id, username, password_hash, created_at) VALUES(?, ?, ?, ?)",
+            (user_id, username, password_hash, now),
+        )
+
+    token = _create_token(user_id, username)
+    return {
+        "success": True,
+        "message": "注册成功",
+        "data": {"user_id": user_id, "username": username, "token": token},
+    }
+
+
+@app.post("/v1/auth/login")
+def login(payload: UserLogin) -> dict:
+    username = payload.username.strip()
+    with get_connection() as connection:
+        row = connection.execute(
+            "SELECT id, username, password_hash FROM users WHERE username = ?",
+            (username,),
+        ).fetchone()
+
+    if row is None or not _check_password(payload.password, row["password_hash"]):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+
+    token = _create_token(row["id"], row["username"])
+    return {
+        "success": True,
+        "message": "登录成功",
+        "data": {
+            "user_id": row["id"],
+            "username": row["username"],
+            "token": token,
+        },
+    }
+
+
+@app.get("/v1/auth/me")
+def auth_me(user: dict = Depends(_get_current_user)) -> dict:
+    return {"success": True, "data": user}
+
+
+# ===== AI 代理（服务端持有 API Key，客户端不暴露） =====
+
+
+@app.post("/v1/ai/chat")
+async def ai_chat(
+    request: AiChatRequest,
+    user: dict = Depends(_get_current_user),
+) -> dict:
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="服务端未配置 AI API Key")
+
+    body = request.model_dump(mode="json")
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(
+            f"{OPENAI_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+        )
+
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI 服务错误 ({response.status_code}): {response.text}",
+        )
+
+    return response.json()
