@@ -35,4 +35,14 @@ class NutritionAnalysis {
           .toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'overall': overall,
+    'vegetable_score': vegetableScore,
+    'protein_score': proteinScore,
+    'drink_status': drinkStatus,
+    'spicy_status': spicyStatus,
+    'regularity': regularity,
+    'suggestions': suggestions,
+  };
 }

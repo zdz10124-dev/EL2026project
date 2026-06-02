@@ -6,7 +6,7 @@
 today_eat_app/                  # Flutter 应用
 ├── lib/
 │   ├── models/
-│   │   ├── ai_analysis.dart        # 图片/视频分析结果模型
+│   │   ├── ai_analysis.dart        # 图片分析结果模型
 │   │   ├── food_diary.dart         # 美食日记模型
 │   │   ├── nutrition_analysis.dart # 营养分析模型
 │   │   └── preference_analysis.dart# 偏好分析模型
@@ -107,10 +107,9 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
 | 功能 | 入口 | 调用 AI | AI 未配置时 |
 |---|---|---|---|
 | 图片识别分析 | 拍照编辑页 → AI 识别图片 | ✅ | 弹窗提示 |
-| 视频分析 | 主页面 → 视频按钮 | ✅ | 弹窗提示 |
-| AI 美食日记 | 其他功能 → 美食日记（AI） | ✅ | 弹窗提示 |
-| 营养分析 | 其他功能 → 营养分析 | ✅ | 页面显示「功能准备中」 |
-| 偏好分析 | 其他功能 → 偏好分析 | ✅ | 页面显示「功能准备中」 |
+| AI 美食日记 | 其他功能 → 美食日记（AI） | ✅ 手动生成 | 弹窗提示 |
+| 营养分析 | 其他功能 → 营养分析 | ✅ 自动分析 | 页面显示「功能准备中」 |
+| 偏好分析 | 其他功能 → 偏好分析 | ✅ 自动分析 | 页面显示「功能准备中」 |
 | 决定吃什么 | 底部 Tab「决定吃什么」 | ❌ 仅本地数据库 | — |
 | 笔记本风格日记 | 其他功能 → 美食日记 | ❌ 仅按日期分组展示 | — |
 | 统计分析 | 其他功能 → 统计分析 | ❌ 本地计算 | — |
@@ -127,19 +126,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
   → 返回: 菜品、主配菜、辣度、食材、菜系
 ```
 
-### 2. 视频分析
-
-```
-选择视频 → 提取 5 帧关键帧
-  → AgentService.analyzeFoodVideo(path)
-    → 逐帧提取缩略图 (VideoThumbnail)
-    → LlmService.callLlmWithImages(多帧)
-      → Direct: POST OpenAI (多图 Vision)
-      → Server: POST /v1/ai/chat → 转发
-  → 展示分析结果
-```
-
-### 3. 美食日记
+### 2. 美食日记
 
 ```
 选择日期范围 → 获取记录 → AgentService.generateFoodDiary()
@@ -148,22 +135,28 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
   → 返回: 标题、正文、摘要、心情
 ```
 
-### 4. 偏好分析
+### 3. 偏好分析
 
 ```
-获取历史记录 → AgentService.analyzePreferences()
-  → 格式化记录文本
-  → LlmService.callLlm() (偏好分析 prompt)
-  → 返回: 最爱菜系、食材、菜品、地点、趋势
+进入页面 → 优先展示缓存（SharedPreferences）
+  → 无缓存则自动触发 AgentService.analyzePreferences()
+    → 格式化记录文本
+    → LlmService.callLlm() (偏好分析 prompt)
+    → 返回: 最爱菜系、食材、菜品、地点、趋势
+    → 缓存到本地（JSON + 时间戳）
+  → AppBar 刷新按钮可手动重新分析
 ```
 
-### 5. 营养分析
+### 4. 营养分析
 
 ```
-获取历史记录 → AgentService.analyzeNutrition()
-  → 格式化记录文本
-  → LlmService.callLlm() (营养分析 prompt)
-  → 返回: 总评、蔬菜/蛋白质评分、建议
+进入页面 → 优先展示缓存（SharedPreferences，按近7天/近30天分别缓存）
+  → 无缓存则自动触发 AgentService.analyzeNutrition()
+    → 格式化记录文本
+    → LlmService.callLlm() (营养分析 prompt)
+    → 返回: 总评、蔬菜/蛋白质评分、建议
+    → 缓存到本地（JSON + 时间戳）
+  → AppBar 刷新按钮可手动重新分析
 ```
 
 ---
