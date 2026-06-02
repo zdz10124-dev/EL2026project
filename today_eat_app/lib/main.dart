@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'models/ui_config.dart';
 import 'screens/home_shell.dart';
@@ -7,10 +6,10 @@ import 'services/ui_config_loader.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  sqfliteFfiInit();
   final config = await UiConfigLoader.load();
   runApp(TodayEatApp(config: config));
 }
+
 
 class TodayEatApp extends StatelessWidget {
   const TodayEatApp({super.key, required this.config});

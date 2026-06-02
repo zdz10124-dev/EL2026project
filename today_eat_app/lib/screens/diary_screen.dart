@@ -55,7 +55,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
 
     try {
       // 获取日期范围内的记录
-      final allRecords = await widget.repository.recordsStream.first;
+      final allRecords = await widget.repository.fetchRecords();
       final filtered = allRecords.where((r) {
         return r.createdAt.isAfter(
               _dateRange.start.subtract(const Duration(days: 1)),

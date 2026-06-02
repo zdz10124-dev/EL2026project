@@ -39,7 +39,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
     setState(() => _loading = true);
 
     try {
-      final allRecords = await widget.repository.recordsStream.first;
+      final allRecords = await widget.repository.fetchRecords();
       final cutoff = _period == 'week'
           ? DateTime.now().subtract(const Duration(days: 7))
           : DateTime.now().subtract(const Duration(days: 30));
