@@ -11,6 +11,7 @@ import '../models/recommendation_models.dart';
 import '../services/location_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/section_card.dart';
+import '../widgets/themed_page_background.dart';
 
 class NetworkRecommendationPage extends StatefulWidget {
   const NetworkRecommendationPage({super.key, required this.repository});
@@ -54,6 +55,7 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('联网推荐'),
         actions: [
@@ -64,12 +66,13 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () => _loadRecommendations(refresh: true),
-        child: ListView(
-          controller: _scrollController,
-          padding: const EdgeInsets.all(20),
-          children: [
+      body: ThemedPageBackground(
+        child: RefreshIndicator(
+          onRefresh: () => _loadRecommendations(refresh: true),
+          child: ListView(
+            controller: _scrollController,
+            padding: const EdgeInsets.all(20),
+            children: [
             _buildLocationBanner(context),
             const SizedBox(height: 12),
             Wrap(
@@ -123,6 +126,8 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
                   child: _RecommendationListCard(
                     item: item,
                     repository: widget.repository,
+                    onVote: _handleVote,
+                    onReport: _handleReport,
                   ),
                 ),
               ),
@@ -137,7 +142,8 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
                   child: Center(child: Text('继续下滑加载更多')),
                 ),
             ],
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -298,6 +304,63 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
       ),
     );
   }
+
+  Future<void> _handleVote(RecommendationItem item, String action) async {
+    try {
+      final result = await widget.repository.submitRecommendationVote(
+        recommendationId: item.id,
+        action: action,
+      );
+      if (!mounted) return;
+      if (result.feedback.isHidden) {
+        setState(() {
+          _items = _items.where((entry) => entry.id != item.id).toList();
+          _total = (_total - 1).clamp(0, 1 << 30);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('该推荐已达到下架阈值，现已永久下架')),
+        );
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(action == 'upvote' ? '已点赞' : '已点踩')),
+      );
+      await _loadRecommendations(refresh: true);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('操作失败：$error')),
+      );
+    }
+  }
+
+  Future<void> _handleReport(RecommendationItem item) async {
+    try {
+      final result = await widget.repository.submitRecommendationReport(
+        recommendationId: item.id,
+      );
+      if (!mounted) return;
+      if (result.feedback.isHidden) {
+        setState(() {
+          _items = _items.where((entry) => entry.id != item.id).toList();
+          _total = (_total - 1).clamp(0, 1 << 30);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('举报达到阈值，该推荐已永久下架')),
+        );
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('举报已提交')),
+      );
+      await _loadRecommendations(refresh: true);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('举报失败：$error')),
+      );
+    }
+  }
 }
 
 class RecommendationDetailPage extends StatelessWidget {
@@ -317,11 +380,15 @@ class RecommendationDetailPage extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+            backgroundColor: Colors.transparent,
+            body: ThemedPageBackground(
+              child: Center(child: CircularProgressIndicator()),
+            ),
           );
         }
         if (snapshot.hasError || !snapshot.hasData) {
           return Scaffold(
+            backgroundColor: Colors.transparent,
             appBar: AppBar(title: const Text('推荐详情')),
             body: Padding(
               padding: const EdgeInsets.all(20),
@@ -434,10 +501,14 @@ class _RecommendationListCard extends StatelessWidget {
   const _RecommendationListCard({
     required this.item,
     required this.repository,
+    required this.onVote,
+    required this.onReport,
   });
 
   final RecommendationItem item;
   final MealRepository repository;
+  final Future<void> Function(RecommendationItem item, String action) onVote;
+  final Future<void> Function(RecommendationItem item) onReport;
 
   @override
   Widget build(BuildContext context) {
@@ -475,6 +546,46 @@ class _RecommendationListCard extends StatelessWidget {
               '均价 ${item.aggregate.averagePrice?.toStringAsFixed(1) ?? '暂无'} · '
               '最近 ${DateFormat('MM/dd HH:mm').format(item.aggregate.latestRecordedAt)}',
               style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ActionChip(
+                  avatar: Icon(
+                    Icons.thumb_up_alt_outlined,
+                    size: 18,
+                    color: item.feedback.currentVote == 'upvote'
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                  ),
+                  label: Text('点赞 ${item.feedback.upvoteCount}'),
+                  onPressed: () => onVote(item, 'upvote'),
+                ),
+                ActionChip(
+                  avatar: Icon(
+                    Icons.thumb_down_alt_outlined,
+                    size: 18,
+                    color: item.feedback.currentVote == 'downvote'
+                        ? Theme.of(context).colorScheme.error
+                        : null,
+                  ),
+                  label: Text('点踩 ${item.feedback.downvoteCount}'),
+                  onPressed: () => onVote(item, 'downvote'),
+                ),
+                ActionChip(
+                  avatar: Icon(
+                    Icons.flag_outlined,
+                    size: 18,
+                    color: item.feedback.currentReported
+                        ? Theme.of(context).colorScheme.error
+                        : null,
+                  ),
+                  label: Text('举报 ${item.feedback.reportCount}'),
+                  onPressed: () => onReport(item),
+                ),
+              ],
             ),
           ],
         ),

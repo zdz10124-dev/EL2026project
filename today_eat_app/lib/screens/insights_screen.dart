@@ -1,14 +1,27 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
+import 'package:gal/gal.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:share_plus/share_plus.dart';
 
 import '../models/meal_record.dart';
+import '../models/style_presets.dart';
 import '../models/ui_config.dart';
 import '../services/agent_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/section_card.dart';
+import '../widgets/themed_page_background.dart';
 import 'network_recommendation_screen.dart';
 import 'nutrition_screen.dart';
 import 'preference_screen.dart';
@@ -18,12 +31,14 @@ class InsightsScreen extends StatelessWidget {
     super.key,
     required this.config,
     required this.repository,
+    required this.defaultDiaryStyleId,
     this.agentService,
   });
 
   final UiConfig config;
   final MealRepository repository;
   final AgentService? agentService;
+  final DiaryStyleId defaultDiaryStyleId;
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +52,7 @@ class InsightsScreen extends StatelessWidget {
           stream: repository.recordsStream,
           initialData: const [],
           builder: (context, snapshot) {
-            final records = snapshot.data ?? const [];
+            final records = snapshot.data ?? const <MealRecord>[];
             return ListView(
               children: [
                 Text(
@@ -47,11 +62,15 @@ class InsightsScreen extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   records.isEmpty
-                      ? '先记录几顿饭，再来看看这里的内容。'
-                      : '从日记、统计、营养和推荐四个方向继续展开。',
+                      ? '先记下几顿饭，这里会慢慢长成你的美食地图。'
+                      : '从日记、统计、营养和推荐几个方向继续展开。',
                 ),
                 const SizedBox(height: 18),
-                _buildGrid(context),
+                _InsightsGrid(
+                  repository: repository,
+                  agentService: agentService,
+                  defaultDiaryStyleId: defaultDiaryStyleId,
+                ),
               ],
             );
           },
@@ -59,46 +78,68 @@ class InsightsScreen extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _buildGrid(BuildContext context) {
+class _InsightsGrid extends StatelessWidget {
+  const _InsightsGrid({
+    required this.repository,
+    required this.agentService,
+    required this.defaultDiaryStyleId,
+  });
+
+  final MealRepository repository;
+  final AgentService? agentService;
+  final DiaryStyleId defaultDiaryStyleId;
+
+  @override
+  Widget build(BuildContext context) {
     final cards = <_FeatureCardData>[
       _FeatureCardData(
         icon: Icons.menu_book_rounded,
         title: '美食日记',
-        subtitle: '按时间生成可翻页的吃饭笔记预览',
-        page: JournalGeneratorPage(repository: repository),
+        subtitle: '把记录做成可翻页的手账样式。',
+        page: JournalGeneratorPage(
+          repository: repository,
+          defaultStyleId: defaultDiaryStyleId,
+        ),
       ),
       _FeatureCardData(
         icon: Icons.analytics_outlined,
         title: '统计分析',
-        subtitle: '查看金额、菜品、地点与评分分布',
+        subtitle: '看花费、菜品、地点和评分分布。',
         page: StatsAnalysisPage(repository: repository),
       ),
       _FeatureCardData(
         icon: Icons.restaurant_menu,
         title: '营养分析',
         subtitle: agentService?.isAvailable == true
-            ? 'AI 评估你的营养摄入'
-            : '需先配置 AI 模型',
+            ? '让 AI 帮你看近期饮食结构。'
+            : '先配置 AI，再开启营养分析。',
         page: agentService == null
             ? null
-            : NutritionScreen(repository: repository, agentService: agentService!),
+            : NutritionScreen(
+                repository: repository,
+                agentService: agentService!,
+              ),
       ),
       _FeatureCardData(
         icon: Icons.public_rounded,
         title: '联网推荐',
-        subtitle: '按地区、菜系、价格区间筛选推荐',
+        subtitle: '按地区、菜系和价格区间看周边推荐。',
         page: NetworkRecommendationPage(repository: repository),
       ),
       _FeatureCardData(
         icon: Icons.person_outline,
         title: '偏好分析',
         subtitle: agentService?.isAvailable == true
-            ? 'AI 分析你的口味偏好'
-            : '需先配置 AI 模型',
+            ? '总结你更爱吃什么、常去哪里。'
+            : '先配置 AI，再看口味画像。',
         page: agentService == null
             ? null
-            : PreferenceScreen(repository: repository, agentService: agentService!),
+            : PreferenceScreen(
+                repository: repository,
+                agentService: agentService!,
+              ),
       ),
     ];
 
@@ -161,12 +202,15 @@ class _FeatureCardData {
   final Widget? page;
 }
 
-// ===== 美食日记（笔记本风格） =====
-
 class JournalGeneratorPage extends StatefulWidget {
-  const JournalGeneratorPage({super.key, required this.repository});
+  const JournalGeneratorPage({
+    super.key,
+    required this.repository,
+    required this.defaultStyleId,
+  });
 
   final MealRepository repository;
+  final DiaryStyleId defaultStyleId;
 
   @override
   State<JournalGeneratorPage> createState() => _JournalGeneratorPageState();
@@ -175,112 +219,106 @@ class JournalGeneratorPage extends StatefulWidget {
 class _JournalGeneratorPageState extends State<JournalGeneratorPage> {
   DateTime _startDate = DateTime.now().subtract(const Duration(days: 6));
   DateTime _endDate = DateTime.now();
-  String _style = '标准模式';
+  late DiaryStyleId _styleId;
+
+  @override
+  void initState() {
+    super.initState();
+    _styleId = widget.defaultStyleId;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final style = AppStyleCatalog.diaryStyleById(_styleId);
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('美食日记')),
-      body: FutureBuilder<List<MealRecord>>(
-        future: widget.repository.filterRecords(
-          start: DateTime(_startDate.year, _startDate.month, _startDate.day),
-          end: DateTime(
-            _endDate.year,
-            _endDate.month,
-            _endDate.day,
-            23,
-            59,
-            59,
+      body: ThemedPageBackground(
+        child: FutureBuilder<List<MealRecord>>(
+          future: widget.repository.filterRecords(
+            start: DateTime(_startDate.year, _startDate.month, _startDate.day),
+            end: DateTime(
+              _endDate.year,
+              _endDate.month,
+              _endDate.day,
+              23,
+              59,
+              59,
+            ),
           ),
-        ),
-        builder: (context, snapshot) {
-          final records = snapshot.data ?? const <MealRecord>[];
-          final journalEntries = widget.repository.buildJournalEntries(records);
-          return ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: _DateCard(
-                      label: '开始日期',
-                      value: _startDate,
-                      onTap: () => _pickDate(isStart: true),
+          builder: (context, snapshot) {
+            final records = snapshot.data ?? const <MealRecord>[];
+            final journalEntries = widget.repository.buildJournalEntries(records);
+            return ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _DateCard(
+                        label: '开始日期',
+                        value: _startDate,
+                        onTap: () => _pickDate(isStart: true),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _DateCard(
-                      label: '结束日期',
-                      value: _endDate,
-                      onTap: () => _pickDate(isStart: false),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _DateCard(
+                        label: '结束日期',
+                        value: _endDate,
+                        onTap: () => _pickDate(isStart: false),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: journalEntries.isEmpty
-                    ? null
-                    : () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => JournalNotebookPage(
-                            entries: journalEntries,
-                            styleName: _style,
-                          ),
-                        ),
-                      ),
-                child: const Text('生成美食日记'),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: _style,
-                decoration: const InputDecoration(labelText: '日记样式'),
-                items: const [
-                  DropdownMenuItem(value: '标准模式', child: Text('标准模式')),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _style = value);
-                  }
-                },
-              ),
-              const SizedBox(height: 18),
-              Text('预览', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 12),
-              if (journalEntries.isEmpty)
-                const SectionCard(child: Text('当前时间范围内没有记录，暂时无法生成美食日记。'))
-              else
-                SectionCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('样式：$_style'),
-                      const SizedBox(height: 8),
-                      Text(
-                        '将生成 ${journalEntries.length} 个日期段，按"凌晨 4 点到次日凌晨 4 点"为一天分组。',
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '第一页预览日期：${DateFormat('yyyy/MM/dd').format(journalEntries.first.dayStart)}',
-                      ),
-                      const SizedBox(height: 8),
-                      ...journalEntries.first.records
-                          .take(4)
-                          .map(
-                            (record) => Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Text(
-                                '• ${record.dishName} / ${record.location} / ${DateFormat('MM/dd HH:mm').format(record.createdAt)}',
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: AppStyleCatalog.diaryStyles.map((item) {
+                    return ChoiceChip(
+                      label: Text(item.name),
+                      selected: _styleId == item.id,
+                      onSelected: (_) => setState(() => _styleId = item.id),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: journalEntries.isEmpty
+                      ? null
+                      : () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => JournalNotebookPage(
+                                entries: journalEntries,
+                                style: style,
                               ),
                             ),
                           ),
-                    ],
+                  child: const Text('生成美食日记'),
+                ),
+                const SizedBox(height: 18),
+                Text('样式预览', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                SectionCard(
+                  padding: const EdgeInsets.all(12),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: AspectRatio(
+                      aspectRatio: 3 / 4,
+                      child: style.backgroundAssetPath == null
+                          ? Container(color: style.paperColor)
+                          : Image.asset(
+                              style.backgroundAssetPath!,
+                              fit: BoxFit.cover,
+                            ),
+                    ),
                   ),
                 ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -314,18 +352,20 @@ class JournalNotebookPage extends StatefulWidget {
   const JournalNotebookPage({
     super.key,
     required this.entries,
-    required this.styleName,
+    required this.style,
   });
 
   final List<JournalEntry> entries;
-  final String styleName;
+  final DiaryStyleSpec style;
 
   @override
   State<JournalNotebookPage> createState() => _JournalNotebookPageState();
 }
 
 class _JournalNotebookPageState extends State<JournalNotebookPage> {
+  final GlobalKey _pageKey = GlobalKey();
   int _pageIndex = 0;
+  bool _exporting = false;
 
   @override
   Widget build(BuildContext context) {
@@ -335,49 +375,322 @@ class _JournalNotebookPageState extends State<JournalNotebookPage> {
     final canGoNext = _pageIndex < pages.length - 1;
 
     return Scaffold(
-      appBar: AppBar(title: Text('美食日记 · ${widget.styleName}')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF9F4E8),
-                  borderRadius: BorderRadius.circular(28),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x22000000),
-                      blurRadius: 24,
-                      offset: Offset(0, 12),
-                    ),
-                  ],
-                ),
-                child: _NotebookPage(pageNumber: _pageIndex + 1, items: page),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text('美食日记 · ${widget.style.name}'),
+        actions: [
+          PopupMenuButton<String>(
+            enabled: !_exporting,
+            onSelected: _handleExportAction,
+            itemBuilder: (context) => const [
+              PopupMenuItem<String>(
+                value: 'save_image',
+                child: Text('导出图片'),
               ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                IconButton(
-                  onPressed: canGoPrev
-                      ? () => setState(() => _pageIndex--)
-                      : null,
-                  icon: const Icon(Icons.arrow_back_ios_rounded),
+              PopupMenuItem<String>(
+                value: 'share_pdf',
+                child: Text('导出 PDF'),
+              ),
+            ],
+          ),
+          IconButton(
+            tooltip: '分享长图',
+            onPressed: _exporting ? null : _shareAllPagesAsLongImage,
+            icon: const Icon(Icons.ios_share_rounded),
+          ),
+          IconButton(
+            tooltip: '导出完整 PDF',
+            onPressed: _exporting
+                ? null
+                : () => _saveAllPagesAsPdf(shareAfterSave: false),
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+          ),
+        ],
+      ),
+      body: ThemedPageBackground(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Expanded(
+                child: RepaintBoundary(
+                  key: _pageKey,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: widget.style.pageBackgroundColor,
+                      borderRadius: BorderRadius.circular(28),
+                      boxShadow: [
+                        BoxShadow(
+                          color: widget.style.shadowColor,
+                          blurRadius: 24,
+                          offset: const Offset(0, 12),
+                        ),
+                      ],
+                    ),
+                    child: _NotebookPage(
+                      pageNumber: _pageIndex + 1,
+                      items: page,
+                      style: widget.style,
+                    ),
+                  ),
                 ),
-                Text('第 ${_pageIndex + 1} / ${pages.length} 页'),
-                IconButton(
-                  onPressed: canGoNext
-                      ? () => setState(() => _pageIndex++)
-                      : null,
-                  icon: const Icon(Icons.arrow_forward_ios_rounded),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(
+                    onPressed: canGoPrev ? () => setState(() => _pageIndex--) : null,
+                    icon: const Icon(Icons.arrow_back_ios_rounded),
+                  ),
+                  Text('第 ${_pageIndex + 1} / ${pages.length} 页'),
+                  IconButton(
+                    onPressed: canGoNext ? () => setState(() => _pageIndex++) : null,
+                    icon: const Icon(Icons.arrow_forward_ios_rounded),
+                  ),
+                ],
+              ),
+              if (_exporting)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: LinearProgressIndicator(),
                 ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Future<void> _handleExportAction(String value) async {
+    switch (value) {
+      case 'save_image':
+        await _saveAllPagesAsLongImage();
+        return;
+      case 'share_pdf':
+        await _saveAllPagesAsPdf(shareAfterSave: true);
+        return;
+      case 'share_image':
+        await _shareAllPagesAsLongImage();
+        return;
+      case 'save_pdf':
+        await _saveAllPagesAsPdf(shareAfterSave: false);
+        return;
+    }
+  }
+
+  Future<void> _saveAllPagesAsLongImage() async {
+    await _runExportTask(() async {
+      final file = await _buildLongImageFile();
+      await Gal.putImage(file.path, album: 'Today Eat');
+      _showExportMessage('已保存全部长图到系统图库');
+    });
+  }
+
+  Future<void> _shareAllPagesAsLongImage() async {
+    await _runExportTask(() async {
+      final file = await _buildLongImageFile();
+      await _shareFile(
+        file: file,
+        mimeType: 'image/png',
+        text: '分享一份完整的美食日记长图',
+      );
+    });
+  }
+
+  Future<void> _saveAllPagesAsPdf({required bool shareAfterSave}) async {
+    await _runExportTask(() async {
+      final file = await _buildPdfFile();
+      if (shareAfterSave) {
+        await _shareFile(
+          file: file,
+          mimeType: 'application/pdf',
+          text: '分享一份完整的美食日记 PDF',
+        );
+      } else {
+        _showExportMessage('完整 PDF 已导出到 ${file.path}');
+      }
+    });
+  }
+
+  Future<void> _runExportTask(Future<void> Function() action) async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      await action();
+    } catch (error) {
+      _showExportMessage('导出失败：$error');
+    } finally {
+      if (mounted) {
+        setState(() => _exporting = false);
+      }
+    }
+  }
+
+  Future<File> _buildLongImageFile() async {
+    final pages = _buildPages(widget.entries);
+    final pageBytes = await _captureAllPagePngs(pageCount: pages.length);
+    final stitchedBytes = _stitchImagesVertically(pageBytes);
+    final exportDir = await _resolveExportDirectory();
+    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final file = File(path.join(exportDir.path, 'food_journal_full_$timestamp.png'));
+    await file.writeAsBytes(stitchedBytes, flush: true);
+    return file;
+  }
+
+  Future<File> _buildPdfFile() async {
+    final pages = _buildPages(widget.entries);
+    final pageBytes = await _captureAllPagePngs(pageCount: pages.length);
+    final exportDir = await _resolveExportDirectory();
+    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final file = File(path.join(exportDir.path, 'food_journal_full_$timestamp.pdf'));
+    final document = pw.Document();
+    for (final bytes in pageBytes) {
+      document.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          build: (_) => pw.Center(
+            child: pw.Image(
+              pw.MemoryImage(bytes),
+              fit: pw.BoxFit.contain,
+            ),
+          ),
+        ),
+      );
+    }
+    await file.writeAsBytes(await document.save(), flush: true);
+    return file;
+  }
+
+  Future<List<Uint8List>> _captureAllPagePngs({required int pageCount}) async {
+    final originalPageIndex = _pageIndex;
+    final images = <Uint8List>[];
+    for (var index = 0; index < pageCount; index++) {
+      if (_pageIndex != index) {
+        setState(() => _pageIndex = index);
+        await _waitForNextFrame();
+        await Future<void>.delayed(const Duration(milliseconds: 24));
+      }
+      images.add(await _captureCurrentPagePng());
+    }
+    if (_pageIndex != originalPageIndex) {
+      setState(() => _pageIndex = originalPageIndex);
+      await _waitForNextFrame();
+    }
+    return images;
+  }
+
+  Future<void> _waitForNextFrame() {
+    final completer = Completer<void>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      completer.complete();
+    });
+    return completer.future;
+  }
+
+  // ignore: unused_element
+  Future<void> _exportCurrentPage({
+    required String extension,
+    required Future<void> Function(Uint8List bytes, File file) saver,
+  }) async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final bytes = await _captureCurrentPagePng();
+      final exportDir = await _resolveExportDirectory();
+      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final file = File(
+        path.join(
+          exportDir.path,
+          'food_journal_page_${_pageIndex + 1}_$timestamp.$extension',
+        ),
+      );
+      await saver(bytes, file);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已导出到：${file.path}')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导出失败：$error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _exporting = false);
+      }
+    }
+  }
+
+  Future<Uint8List> _captureCurrentPagePng() async {
+    final boundary =
+        _pageKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+    final image = await boundary.toImage(pixelRatio: 3);
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
+
+  Uint8List _stitchImagesVertically(List<Uint8List> pageBytes) {
+    final decoded = pageBytes
+        .map(img.decodeImage)
+        .whereType<img.Image>()
+        .toList(growable: false);
+    if (decoded.isEmpty) {
+      throw StateError('没有可用于拼接的页面');
+    }
+
+    final width = decoded.fold<int>(0, (value, image) => max(value, image.width));
+    final height = decoded.fold<int>(0, (value, image) => value + image.height);
+    final canvas = img.Image(width: width, height: height);
+    img.fill(canvas, color: img.ColorRgb8(255, 255, 255));
+
+    var offsetY = 0;
+    for (final page in decoded) {
+      final offsetX = ((width - page.width) / 2).round();
+      img.compositeImage(canvas, page, dstX: offsetX, dstY: offsetY);
+      offsetY += page.height;
+    }
+
+    return Uint8List.fromList(img.encodePng(canvas));
+  }
+
+  Future<Directory> _resolveExportDirectory() async {
+    Directory? baseDirectory;
+    try {
+      baseDirectory = await getExternalStorageDirectory();
+    } catch (_) {
+      baseDirectory = null;
+    }
+    baseDirectory ??= await getApplicationDocumentsDirectory();
+    final exportDirectory =
+        Directory(path.join(baseDirectory.path, 'journal_exports'));
+    if (!await exportDirectory.exists()) {
+      await exportDirectory.create(recursive: true);
+    }
+    return exportDirectory;
+  }
+
+  Future<void> _shareFile({
+    required File file,
+    required String mimeType,
+    required String text,
+  }) async {
+    final box = context.findRenderObject() as RenderBox?;
+    await SharePlus.instance.share(
+      ShareParams(
+        text: text,
+        files: [XFile(file.path, mimeType: mimeType)],
+        sharePositionOrigin: box == null
+            ? null
+            : box.localToGlobal(Offset.zero) & box.size,
+      ),
+    );
+  }
+
+  void _showExportMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -410,8 +723,6 @@ class _JournalNotebookPageState extends State<JournalNotebookPage> {
   }
 }
 
-// ===== 统计分析 =====
-
 class StatsAnalysisPage extends StatefulWidget {
   const StatsAnalysisPage({super.key, required this.repository});
 
@@ -429,136 +740,114 @@ class _StatsAnalysisPageState extends State<StatsAnalysisPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('统计分析')),
-      body: FutureBuilder<List<MealRecord>>(
-        future: widget.repository.filterRecords(
-          start: _currentRange().$1,
-          end: _currentRange().$2,
-        ),
-        builder: (context, snapshot) {
-          final records = snapshot.data ?? const <MealRecord>[];
-          final details = widget.repository.buildDetailedStats(records);
-          final totalCost = details['totalCost'] as double;
-          final recordCount = details['recordCount'] as int;
-          final topLocations =
-              details['topLocations'] as List<MapEntry<String, int>>;
-          final topDishes = details['topDishes'] as List<MapEntry<String, int>>;
-          final ratings =
-              details['ratingDistribution'] as List<MapEntry<String, int>>;
-          return ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  ChoiceChip(
-                    label: const Text('近7天'),
-                    selected: _preset == StatsRangePreset.last7Days,
-                    onSelected: (_) =>
-                        setState(() => _preset = StatsRangePreset.last7Days),
-                  ),
-                  ChoiceChip(
-                    label: const Text('近30天'),
-                    selected: _preset == StatsRangePreset.last30Days,
-                    onSelected: (_) =>
-                        setState(() => _preset = StatsRangePreset.last30Days),
-                  ),
-                  ChoiceChip(
-                    label: const Text('自定义时间'),
-                    selected: _preset == StatsRangePreset.custom,
-                    onSelected: (_) =>
-                        setState(() => _preset = StatsRangePreset.custom),
-                  ),
-                ],
-              ),
-              if (_preset == StatsRangePreset.custom) ...[
-                const SizedBox(height: 14),
-                Row(
+      body: ThemedPageBackground(
+        child: FutureBuilder<List<MealRecord>>(
+          future: widget.repository.filterRecords(
+            start: _currentRange().$1,
+            end: _currentRange().$2,
+          ),
+          builder: (context, snapshot) {
+            final records = snapshot.data ?? const <MealRecord>[];
+            final details = widget.repository.buildDetailedStats(records);
+            final totalCost = details['totalCost'] as double;
+            final recordCount = details['recordCount'] as int;
+            final topLocations =
+                details['topLocations'] as List<MapEntry<String, int>>;
+            final topDishes =
+                details['topDishes'] as List<MapEntry<String, int>>;
+            final ratings =
+                details['ratingDistribution'] as List<MapEntry<String, int>>;
+
+            return ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
                   children: [
-                    Expanded(
-                      child: _DateCard(
-                        label: '开始',
-                        value: _customStart,
-                        onTap: () => _pickDate(true),
-                      ),
+                    ChoiceChip(
+                      label: const Text('近 7 天'),
+                      selected: _preset == StatsRangePreset.last7Days,
+                      onSelected: (_) =>
+                          setState(() => _preset = StatsRangePreset.last7Days),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _DateCard(
-                        label: '结束',
-                        value: _customEnd,
-                        onTap: () => _pickDate(false),
-                      ),
+                    ChoiceChip(
+                      label: const Text('近 30 天'),
+                      selected: _preset == StatsRangePreset.last30Days,
+                      onSelected: (_) =>
+                          setState(() => _preset = StatsRangePreset.last30Days),
+                    ),
+                    ChoiceChip(
+                      label: const Text('自定义'),
+                      selected: _preset == StatsRangePreset.custom,
+                      onSelected: (_) =>
+                          setState(() => _preset = StatsRangePreset.custom),
                     ),
                   ],
                 ),
+                if (_preset == StatsRangePreset.custom) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _DateCard(
+                          label: '开始日期',
+                          value: _customStart,
+                          onTap: () => _pickDate(true),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _DateCard(
+                          label: '结束日期',
+                          value: _customEnd,
+                          onTap: () => _pickDate(false),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _StatTile(title: '记录数', value: '$recordCount'),
+                    _StatTile(title: '总花费', value: '¥${totalCost.toStringAsFixed(1)}'),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _StatExpandableTile(title: '常去地点', entries: topLocations),
+                const SizedBox(height: 12),
+                _StatExpandableTile(title: '常吃菜品', entries: topDishes),
+                const SizedBox(height: 12),
+                _StatExpandableTile(title: '评分分布', entries: ratings),
               ],
-              const SizedBox(height: 18),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  _StatTile(
-                    title: '总花费',
-                    value: '¥${totalCost.toStringAsFixed(1)}',
-                  ),
-                  _StatTile(title: '记录次数', value: '$recordCount 条'),
-                  _StatExpandableTile(title: '常去地点', entries: topLocations),
-                  _StatExpandableTile(title: '常吃主菜', entries: topDishes),
-                  _StatExpandableTile(title: '评分分布', entries: ratings),
-                ],
-              ),
-              const SizedBox(height: 18),
-              const SectionCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('AI 观察'),
-                    SizedBox(height: 8),
-                    Text('后续这里将用于总结偏好菜品、地区、辣度和饮食规律。'),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
 
   (DateTime, DateTime) _currentRange() {
-    final now = DateTime.now();
     switch (_preset) {
       case StatsRangePreset.last7Days:
         return (
-          DateTime(
-            now.year,
-            now.month,
-            now.day,
-          ).subtract(const Duration(days: 6)),
-          DateTime(now.year, now.month, now.day, 23, 59, 59),
+          DateTime.now().subtract(const Duration(days: 7)),
+          DateTime.now(),
         );
       case StatsRangePreset.last30Days:
         return (
-          DateTime(
-            now.year,
-            now.month,
-            now.day,
-          ).subtract(const Duration(days: 29)),
-          DateTime(now.year, now.month, now.day, 23, 59, 59),
+          DateTime.now().subtract(const Duration(days: 30)),
+          DateTime.now(),
         );
       case StatsRangePreset.custom:
         return (
           DateTime(_customStart.year, _customStart.month, _customStart.day),
-          DateTime(
-            _customEnd.year,
-            _customEnd.month,
-            _customEnd.day,
-            23,
-            59,
-            59,
-          ),
+          DateTime(_customEnd.year, _customEnd.month, _customEnd.day, 23, 59, 59),
         );
     }
   }
@@ -582,8 +871,6 @@ class _StatsAnalysisPageState extends State<StatsAnalysisPage> {
   }
 }
 
-// ===== 通用小组件 =====
-
 class _DateCard extends StatelessWidget {
   const _DateCard({
     required this.label,
@@ -597,16 +884,20 @@ class _DateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SectionCard(
-      padding: const EdgeInsets.all(14),
-      child: InkWell(
-        onTap: onTap,
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: SectionCard(
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label),
+            Text(label, style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 6),
-            Text(DateFormat('yyyy/MM/dd').format(value)),
+            Text(
+              DateFormat('yyyy/MM/dd').format(value),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
           ],
         ),
       ),
@@ -643,10 +934,15 @@ class _NotebookItem {
 }
 
 class _NotebookPage extends StatelessWidget {
-  const _NotebookPage({required this.pageNumber, required this.items});
+  const _NotebookPage({
+    required this.pageNumber,
+    required this.items,
+    required this.style,
+  });
 
   final int pageNumber;
   final List<_NotebookItem> items;
+  final DiaryStyleSpec style;
 
   @override
   Widget build(BuildContext context) {
@@ -655,37 +951,54 @@ class _NotebookPage extends StatelessWidget {
       child: Stack(
         children: [
           Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                color: const Color(0xFFFFFBF4),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: style.paperColor,
+                  image: style.backgroundAssetPath == null
+                      ? null
+                      : DecorationImage(
+                          image: AssetImage(style.backgroundAssetPath!),
+                          fit: BoxFit.cover,
+                          opacity: 0.92,
+                        ),
+                ),
               ),
             ),
           ),
-          items.isEmpty
-              ? const Center(child: Text('这一页暂时没有内容'))
-              : ListView.builder(
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 18),
-                      child: _NotebookRecordCard(
-                        item: item,
-                        seed: pageNumber * 10 + index,
-                      ),
-                    );
-                  },
-                ),
+          if (items.isEmpty)
+            Center(
+              child: Text(
+                '这一页暂时还没有内容',
+                style: TextStyle(color: style.inkColor),
+              ),
+            )
+          else
+            ListView.builder(
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: _NotebookRecordCard(
+                    item: item,
+                    seed: pageNumber * 10 + index,
+                    style: style,
+                  ),
+                );
+              },
+            ),
           Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
+            right: 14,
+            bottom: 10,
             child: Text(
               '$pageNumber',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.brown.shade400),
+              style: TextStyle(
+                color: style.inkColor.withValues(alpha: 0.7),
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -695,57 +1008,96 @@ class _NotebookPage extends StatelessWidget {
 }
 
 class _NotebookRecordCard extends StatelessWidget {
-  const _NotebookRecordCard({required this.item, required this.seed});
+  const _NotebookRecordCard({
+    required this.item,
+    required this.seed,
+    required this.style,
+  });
 
   final _NotebookItem item;
   final int seed;
+  final DiaryStyleSpec style;
 
   @override
   Widget build(BuildContext context) {
     final random = Random(seed);
-    final rotate = (random.nextDouble() * 50 - 25) * pi / 180;
+    final rotate = (random.nextDouble() * 8 - 4) * pi / 180;
     final record = item.record;
+    final dishText = record.dishName == '未填写' ? '' : record.dishName;
+    final locationText = record.location == '未填写' ? '' : record.location;
 
     final image = Transform.rotate(
       angle: rotate,
-      child: Container(
-        width: 110,
-        height: 90,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x18000000),
-              blurRadius: 10,
-              offset: Offset(0, 6),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 118,
+            height: 102,
+            decoration: BoxDecoration(
+              color: style.paperColor,
+              borderRadius: BorderRadius.circular(style.roundPhoto ? 18 : 8),
+              boxShadow: [
+                BoxShadow(
+                  color: style.shadowColor,
+                  blurRadius: 10,
+                  offset: const Offset(0, 6),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: File(record.imagePath).existsSync()
-              ? Image.file(File(record.imagePath), fit: BoxFit.cover)
-              : const Icon(Icons.photo_outlined),
-        ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(style.roundPhoto ? 16 : 6),
+              child: File(record.imagePath).existsSync()
+                  ? Image.file(File(record.imagePath), fit: BoxFit.cover)
+                  : Container(
+                      color: style.paperColor,
+                      child: Icon(Icons.photo_outlined, color: style.inkColor),
+                    ),
+            ),
+          ),
+          if (style.useTape)
+            Positioned(
+              top: -10,
+              left: 28,
+              child: Transform.rotate(
+                angle: -0.08,
+                child: Container(
+                  width: 56,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: style.accentColor.withValues(alpha: 0.32),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
-
-    final dishText = record.dishName == '未填写' ? '' : record.dishName;
-    final locationText = record.location == '未填写' ? '' : record.location;
 
     final text = Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (dishText.isNotEmpty)
-            Text(dishText, style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              dishText,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: style.inkColor,
+                  ),
+            ),
           if (dishText.isNotEmpty && locationText.isNotEmpty)
             const SizedBox(height: 6),
-          if (locationText.isNotEmpty) Text(locationText),
+          if (locationText.isNotEmpty)
+            Text(locationText, style: TextStyle(color: style.inkColor)),
           if (dishText.isNotEmpty || locationText.isNotEmpty)
             const SizedBox(height: 4),
-          Text(DateFormat('HH:mm').format(record.createdAt)),
+          Text(
+            DateFormat('HH:mm').format(record.createdAt),
+            style: TextStyle(
+              color: style.inkColor.withValues(alpha: 0.72),
+            ),
+          ),
         ],
       ),
     );
@@ -756,11 +1108,20 @@ class _NotebookRecordCard extends StatelessWidget {
         if (item.showDateHeader) ...[
           Text(
             DateFormat('yyyy/MM/dd').format(item.journalDay),
-            style: Theme.of(context).textTheme.bodyMedium,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: style.inkColor,
+                  fontWeight: FontWeight.w600,
+                ),
           ),
-          const SizedBox(height: 4),
-          Divider(color: Colors.grey.shade300, height: 16),
-          const SizedBox(height: 6),
+          if (style.useDivider) ...[
+            const SizedBox(height: 4),
+            Divider(
+              color: style.accentColor.withValues(alpha: 0.45),
+              height: 16,
+            ),
+            const SizedBox(height: 6),
+          ] else
+            const SizedBox(height: 10),
         ],
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -805,35 +1166,30 @@ class _StatExpandableTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: MediaQuery.of(context).size.width - 40,
-      child: SectionCard(
-        child: ExpansionTile(
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: EdgeInsets.zero,
-          title: Text(title),
-          subtitle: Text(
-            entries.isEmpty
-                ? '暂无'
-                : '${entries.first.key} · ${entries.first.value}次',
-          ),
-          children: entries.isEmpty
-              ? const [
-                  Padding(
-                    padding: EdgeInsets.only(bottom: 8),
-                    child: Text('暂无数据'),
-                  ),
-                ]
-              : entries
-                    .map(
-                      (entry) => ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(entry.key),
-                        trailing: Text('${entry.value}次'),
-                      ),
-                    )
-                    .toList(),
+    return SectionCard(
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: EdgeInsets.zero,
+        title: Text(title),
+        subtitle: Text(
+          entries.isEmpty ? '暂无' : '${entries.first.key} · ${entries.first.value} 次',
         ),
+        children: entries.isEmpty
+            ? const [
+                Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: Text('暂无数据'),
+                ),
+              ]
+            : entries
+                .map(
+                  (entry) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(entry.key),
+                    trailing: Text('${entry.value} 次'),
+                  ),
+                )
+                .toList(),
       ),
     );
   }

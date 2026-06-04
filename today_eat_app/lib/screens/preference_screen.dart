@@ -7,6 +7,7 @@ import '../models/preference_analysis.dart';
 import '../services/agent_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/section_card.dart';
+import '../widgets/themed_page_background.dart';
 
 class PreferenceScreen extends StatefulWidget {
   const PreferenceScreen({
@@ -104,6 +105,7 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('偏好分析'),
         actions: [
@@ -117,9 +119,10 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
             ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
+      body: ThemedPageBackground(
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
           // 加载中 + 缓存提示
           if (_loading) ...[
             _LoadingBanner(isCached: _analysis != null),
@@ -146,7 +149,8 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
             const SizedBox(height: 8),
             _buildAnalysis(),
           ],
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -403,16 +407,26 @@ class _InfoRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: SectionCard(
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(icon, size: 20, color: Colors.grey.shade600),
             const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                Text(value, style: const TextStyle(fontSize: 14)),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    softWrap: true,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ],
+              ),
             ),
           ],
         ),

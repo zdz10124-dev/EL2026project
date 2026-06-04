@@ -24,8 +24,8 @@ import json as json_lib
 import bcrypt
 import httpx
 import jwt
-from fastapi import (FastAPI, File, Form, HTTPException, Request, UploadFile,
-                     status)
+from fastapi import (Depends, FastAPI, File, Form, HTTPException, Request,
+                     UploadFile, status)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
@@ -37,6 +37,10 @@ DB_PATH = APP_DIR / "recommendations.db"
 UPLOAD_DIR = APP_DIR / "uploads"
 LOCAL_TIMEZONE = timezone(timedelta(hours=8))
 RECOMMENDATION_THRESHOLD = 55.0
+MIN_VOTE_COUNT_TO_HIDE = 5
+MIN_DOWNVOTE_COUNT_TO_HIDE = 3
+DOWNVOTE_RATIO_TO_HIDE = 0.6
+REPORT_COUNT_TO_HIDE = 3
 
 # ---- Auth & AI Proxy 配置 ----
 JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-in-production")
@@ -65,6 +69,14 @@ class UserRegister(BaseModel):
 class UserLogin(BaseModel):
     username: str
     password: str
+
+
+class VoteRequest(BaseModel):
+    action: str = Field(pattern="^(upvote|downvote)$")
+
+
+class ReportRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=240)
 
 
 class AiChatMessage(BaseModel):
@@ -143,6 +155,40 @@ def initialize_database() -> None:
             """
             CREATE INDEX IF NOT EXISTS idx_uploaded_records_dish
             ON uploaded_records(dish_name_normalized)
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS recommendation_votes(
+                subject_key TEXT NOT NULL,
+                fingerprint TEXT NOT NULL,
+                action TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(subject_key, fingerprint)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS recommendation_reports(
+                subject_key TEXT NOT NULL,
+                fingerprint TEXT NOT NULL,
+                reason TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(subject_key, fingerprint)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS hidden_recommendations(
+                subject_key TEXT PRIMARY KEY,
+                hidden_reason TEXT NOT NULL,
+                stats_json TEXT,
+                created_at TEXT NOT NULL
+            )
             """
         )
 
@@ -355,6 +401,7 @@ def build_recommendation_item(
     aggregate: dict[str, Any],
     distance_meters: float | None,
     reason: str,
+    feedback: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "id": record["id"],
@@ -365,6 +412,7 @@ def build_recommendation_item(
         "distance_meters": round(distance_meters, 1) if distance_meters is not None else None,
         "reason": reason,
         "aggregate": aggregate,
+        "feedback": feedback,
     }
 
 
@@ -391,6 +439,115 @@ def fetch_all_records() -> list[sqlite3.Row]:
             "SELECT * FROM uploaded_records ORDER BY created_at DESC"
         ).fetchall()
     return rows
+
+
+def recommendation_fingerprint(request: Request) -> str:
+    header_value = (
+        request.headers.get("x-client-id")
+        or request.headers.get("x-device-id")
+        or request.headers.get("x-user-id")
+    )
+    if header_value:
+        return header_value.strip()
+    if request.client and request.client.host:
+        return f"ip:{request.client.host}"
+    return "anonymous"
+
+
+def fetch_feedback_summary(
+    connection: sqlite3.Connection,
+    subject_key: str,
+    fingerprint: str | None = None,
+) -> dict[str, Any]:
+    vote_rows = connection.execute(
+        "SELECT action, COUNT(*) AS count FROM recommendation_votes WHERE subject_key = ? GROUP BY action",
+        (subject_key,),
+    ).fetchall()
+    report_count = connection.execute(
+        "SELECT COUNT(*) AS count FROM recommendation_reports WHERE subject_key = ?",
+        (subject_key,),
+    ).fetchone()["count"]
+    hidden_row = connection.execute(
+        "SELECT hidden_reason, created_at FROM hidden_recommendations WHERE subject_key = ?",
+        (subject_key,),
+    ).fetchone()
+
+    counts = {row["action"]: row["count"] for row in vote_rows}
+    upvote_count = counts.get("upvote", 0)
+    downvote_count = counts.get("downvote", 0)
+    vote_total = upvote_count + downvote_count
+    downvote_ratio = downvote_count / vote_total if vote_total else 0.0
+    current_vote = None
+    current_reported = False
+
+    if fingerprint:
+        current_vote_row = connection.execute(
+            "SELECT action FROM recommendation_votes WHERE subject_key = ? AND fingerprint = ?",
+            (subject_key, fingerprint),
+        ).fetchone()
+        current_vote = current_vote_row["action"] if current_vote_row else None
+        current_reported = (
+            connection.execute(
+                "SELECT 1 FROM recommendation_reports WHERE subject_key = ? AND fingerprint = ?",
+                (subject_key, fingerprint),
+            ).fetchone()
+            is not None
+        )
+
+    return {
+        "upvote_count": upvote_count,
+        "downvote_count": downvote_count,
+        "report_count": report_count,
+        "vote_total": vote_total,
+        "downvote_ratio": round(downvote_ratio, 4),
+        "current_vote": current_vote,
+        "current_reported": current_reported,
+        "is_hidden": hidden_row is not None,
+        "hidden_reason": hidden_row["hidden_reason"] if hidden_row else None,
+    }
+
+
+def evaluate_and_apply_moderation(
+    connection: sqlite3.Connection,
+    subject_key: str,
+    fingerprint: str | None = None,
+) -> dict[str, Any]:
+    summary = fetch_feedback_summary(connection, subject_key, fingerprint)
+    should_hide = False
+    hidden_reason = None
+
+    if (
+        summary["downvote_count"] >= MIN_DOWNVOTE_COUNT_TO_HIDE
+        and summary["vote_total"] >= MIN_VOTE_COUNT_TO_HIDE
+        and summary["downvote_ratio"] >= DOWNVOTE_RATIO_TO_HIDE
+    ):
+        should_hide = True
+        hidden_reason = "downvote_threshold"
+
+    if summary["report_count"] >= REPORT_COUNT_TO_HIDE:
+        should_hide = True
+        hidden_reason = "report_threshold"
+
+    if should_hide and not summary["is_hidden"]:
+        connection.execute(
+            """
+            INSERT INTO hidden_recommendations(subject_key, hidden_reason, stats_json, created_at)
+            VALUES(?, ?, ?, ?)
+            ON CONFLICT(subject_key) DO UPDATE SET
+                hidden_reason = excluded.hidden_reason,
+                stats_json = excluded.stats_json,
+                created_at = excluded.created_at
+            """,
+            (
+                subject_key,
+                hidden_reason,
+                json_lib.dumps(summary, ensure_ascii=False),
+                now_iso(),
+            ),
+        )
+        summary = fetch_feedback_summary(connection, subject_key, fingerprint)
+
+    return summary
 
 
 @app.on_event("startup")
@@ -526,7 +683,7 @@ async def upload_record(
 
 
 @app.post("/v1/recommendations/search")
-def search_recommendations(payload: SearchRequest) -> dict[str, Any]:
+def search_recommendations(payload: SearchRequest, request: Request) -> dict[str, Any]:
     rows = fetch_all_records()
     filtered_rows = []
     for row in rows:
@@ -550,30 +707,37 @@ def search_recommendations(payload: SearchRequest) -> dict[str, Any]:
         grouped.setdefault(row["dish_name_normalized"], []).append(row)
 
     randomizer = stable_randomizer(payload)
+    fingerprint = recommendation_fingerprint(request)
     candidates: list[dict[str, Any]] = []
-    for records in grouped.values():
-        total_score, nearest_distance = score_candidate(
-            records,
-            payload.latitude,
-            payload.longitude,
-        )
-        if total_score < RECOMMENDATION_THRESHOLD:
-            continue
-        aggregate = build_aggregate(records)
-        representative_record, representative_distance = choose_weighted_record(
-            records,
-            payload.latitude,
-            payload.longitude,
-            randomizer,
-        )
-        candidates.append(
-            {
-                "score": total_score,
-                "representative": representative_record,
-                "aggregate": aggregate,
-                "distance_meters": representative_distance or nearest_distance,
-            }
-        )
+    with get_connection() as connection:
+        for records in grouped.values():
+            subject_key = records[0]["dish_name_normalized"]
+            feedback = evaluate_and_apply_moderation(connection, subject_key, fingerprint)
+            if feedback["is_hidden"]:
+                continue
+            total_score, nearest_distance = score_candidate(
+                records,
+                payload.latitude,
+                payload.longitude,
+            )
+            if total_score < RECOMMENDATION_THRESHOLD:
+                continue
+            aggregate = build_aggregate(records)
+            representative_record, representative_distance = choose_weighted_record(
+                records,
+                payload.latitude,
+                payload.longitude,
+                randomizer,
+            )
+            candidates.append(
+                {
+                    "score": total_score,
+                    "representative": representative_record,
+                    "aggregate": aggregate,
+                    "distance_meters": representative_distance or nearest_distance,
+                    "feedback": feedback,
+                }
+            )
 
     ordered_items: list[dict[str, Any]] = []
     remaining = candidates[:]
@@ -596,6 +760,7 @@ def search_recommendations(payload: SearchRequest) -> dict[str, Any]:
                     selected["aggregate"],
                     selected["distance_meters"],
                 ),
+                selected["feedback"],
             )
         )
 
@@ -627,6 +792,13 @@ def recommendation_detail(record_id: str, request: Request) -> dict[str, Any]:
             "SELECT * FROM uploaded_records WHERE dish_name_normalized = ? ORDER BY created_at DESC",
             (record["dish_name_normalized"],),
         ).fetchall()
+        feedback = evaluate_and_apply_moderation(
+            connection,
+            record["dish_name_normalized"],
+            recommendation_fingerprint(request),
+        )
+        if feedback["is_hidden"]:
+            raise HTTPException(status_code=410, detail="该推荐已被下架")
 
     aggregate = build_aggregate(list(related_rows))
     base_url = str(request.base_url).rstrip("/")
@@ -644,8 +816,73 @@ def recommendation_detail(record_id: str, request: Request) -> dict[str, Any]:
         "distance_meters": distance_meters,
         "reason": recommendation_reason(aggregate, distance_meters),
         "aggregate": aggregate,
+        "feedback": feedback,
     }
     return {"success": True, "message": "ok", "data": data}
+
+
+@app.post("/v1/recommendations/{record_id}/vote")
+def vote_recommendation(record_id: str, payload: VoteRequest, request: Request) -> dict[str, Any]:
+    with get_connection() as connection:
+        record = connection.execute(
+            "SELECT dish_name_normalized FROM uploaded_records WHERE id = ?",
+            (record_id,),
+        ).fetchone()
+        if record is None:
+            raise HTTPException(status_code=404, detail="推荐记录不存在")
+
+        subject_key = record["dish_name_normalized"]
+        fingerprint = recommendation_fingerprint(request)
+        now = now_iso()
+        connection.execute(
+            """
+            INSERT INTO recommendation_votes(subject_key, fingerprint, action, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?)
+            ON CONFLICT(subject_key, fingerprint) DO UPDATE SET
+                action = excluded.action,
+                updated_at = excluded.updated_at
+            """,
+            (subject_key, fingerprint, payload.action, now, now),
+        )
+        feedback = evaluate_and_apply_moderation(connection, subject_key, fingerprint)
+
+    return {
+        "success": True,
+        "message": "ok",
+        "data": {"feedback": feedback},
+    }
+
+
+@app.post("/v1/recommendations/{record_id}/report")
+def report_recommendation(record_id: str, payload: ReportRequest, request: Request) -> dict[str, Any]:
+    with get_connection() as connection:
+        record = connection.execute(
+            "SELECT dish_name_normalized FROM uploaded_records WHERE id = ?",
+            (record_id,),
+        ).fetchone()
+        if record is None:
+            raise HTTPException(status_code=404, detail="推荐记录不存在")
+
+        subject_key = record["dish_name_normalized"]
+        fingerprint = recommendation_fingerprint(request)
+        now = now_iso()
+        connection.execute(
+            """
+            INSERT INTO recommendation_reports(subject_key, fingerprint, reason, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?)
+            ON CONFLICT(subject_key, fingerprint) DO UPDATE SET
+                reason = excluded.reason,
+                updated_at = excluded.updated_at
+            """,
+            (subject_key, fingerprint, parse_optional_text(payload.reason), now, now),
+        )
+        feedback = evaluate_and_apply_moderation(connection, subject_key, fingerprint)
+
+    return {
+        "success": True,
+        "message": "ok",
+        "data": {"feedback": feedback},
+    }
 
 
 # ===== 用户认证 =====

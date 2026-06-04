@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/meal_record.dart';
+import '../models/style_presets.dart';
 import '../models/ui_config.dart';
 import '../services/llm_service.dart';
 import '../services/meal_repository.dart';
@@ -18,12 +19,20 @@ class SettingsScreen extends StatefulWidget {
     required this.config,
     required this.repository,
     required this.llmService,
+    required this.currentAppStyleId,
+    required this.currentDiaryStyleId,
+    required this.onAppStyleChanged,
+    required this.onDiaryStyleChanged,
     this.onConfigChanged,
   });
 
   final UiConfig config;
   final MealRepository repository;
   final LlmService llmService;
+  final AppStyleId currentAppStyleId;
+  final DiaryStyleId currentDiaryStyleId;
+  final ValueChanged<AppStyleId> onAppStyleChanged;
+  final ValueChanged<DiaryStyleId> onDiaryStyleChanged;
   final VoidCallback? onConfigChanged;
 
   @override
@@ -36,11 +45,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _nutritionReminder = false;
   bool _publicRecords = false;
   bool _loadingPublicRecords = true;
+  late AppStyleId _appStyleId;
+  late DiaryStyleId _diaryStyleId;
 
   @override
   void initState() {
     super.initState();
     _llmConfigured = widget.llmService.isConfigured;
+    _appStyleId = widget.currentAppStyleId;
+    _diaryStyleId = widget.currentDiaryStyleId;
     _loadSettings();
   }
 
@@ -138,6 +151,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onChanged: _loadingPublicRecords
                       ? null
                       : (value) => _togglePublicRecords(value),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            _SettingsGroup(
+              title: '界面样式',
+              children: [
+                _StylePreviewTile(
+                  icon: Icons.auto_awesome,
+                  title: '应用主风格',
+                  subtitle: '切换导航、卡片、底色和氛围装饰，尽量做出不同气质。',
+                  value: _appStyleId.name,
+                  labels: {
+                    for (final style in AppStyleCatalog.styles)
+                      style.id.name: style.name,
+                  },
+                  onChanged: (value) {
+                    final selected = AppStyleCatalog.styleById(
+                      AppStyleId.values.firstWhere(
+                        (item) => item.name == value,
+                      ),
+                    );
+                    setState(() => _appStyleId = selected.id);
+                    widget.onAppStyleChanged(selected.id);
+                  },
+                ),
+                _StylePreviewTile(
+                  icon: Icons.menu_book_rounded,
+                  title: '默认日记样式',
+                  subtitle: '控制美食日记的纸张、照片框和装饰素材。',
+                  value: _diaryStyleId.name,
+                  labels: {
+                    for (final style in AppStyleCatalog.diaryStyles)
+                      style.id.name: style.name,
+                  },
+                  onChanged: (value) {
+                    final selected = AppStyleCatalog.diaryStyleById(
+                      DiaryStyleId.values.firstWhere(
+                        (item) => item.name == value,
+                      ),
+                    );
+                    setState(() => _diaryStyleId = selected.id);
+                    widget.onDiaryStyleChanged(selected.id);
+                  },
                 ),
               ],
             ),
@@ -939,6 +997,7 @@ class _RecordEditorPageState extends State<RecordEditorPage> {
   late final TextEditingController _dishController;
   late final TextEditingController _locationController;
   late final TextEditingController _priceController;
+  late final TextEditingController _commentController;
   late double _ratingStars;
   late bool _touched;
   bool _saving = false;
@@ -951,6 +1010,9 @@ class _RecordEditorPageState extends State<RecordEditorPage> {
     _priceController = TextEditingController(
       text: widget.record.price?.toString() ?? '',
     );
+    _commentController = TextEditingController(
+      text: widget.record.comment ?? '',
+    );
     _ratingStars = (widget.record.ratingScore ?? 0) / 2;
     _touched = widget.record.ratingScore != null;
   }
@@ -960,6 +1022,7 @@ class _RecordEditorPageState extends State<RecordEditorPage> {
     _dishController.dispose();
     _locationController.dispose();
     _priceController.dispose();
+    _commentController.dispose();
     super.dispose();
   }
 
@@ -1011,6 +1074,16 @@ class _RecordEditorPageState extends State<RecordEditorPage> {
                   decoration: const InputDecoration(labelText: '价格（元）'),
                 ),
                 const SizedBox(height: 12),
+                TextField(
+                  controller: _commentController,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: '描述栏（选填）',
+                    hintText: '补充口味、环境、分量、服务或个人感受',
+                  ),
+                ),
+                const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -1056,6 +1129,7 @@ class _RecordEditorPageState extends State<RecordEditorPage> {
       locationInput: _locationController.text,
       priceText: priceText,
       ratingScore: _touched ? _ratingStars : null,
+      commentInput: _commentController.text,
     );
     if (!mounted) return;
     Navigator.of(context).pop();
@@ -1141,6 +1215,72 @@ class _SettingsSwitchTile extends StatelessWidget {
         title: Text(title),
         subtitle: Text(subtitle),
         trailing: Switch(value: value, onChanged: onChanged),
+      ),
+    );
+  }
+}
+
+class _StylePreviewTile extends StatelessWidget {
+  const _StylePreviewTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.labels,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String value;
+  final Map<String, String> labels;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(icon),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 4),
+                    Text(subtitle),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: labels.entries.map((entry) {
+              final selected = entry.key == value;
+              return ChoiceChip(
+                label: Text(entry.value),
+                selected: selected,
+                onSelected: (_) => onChanged(entry.key),
+                labelStyle: TextStyle(
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              );
+            }).toList(),
+          ),
+        ],
       ),
     );
   }

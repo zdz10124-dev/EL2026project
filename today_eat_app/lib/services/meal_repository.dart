@@ -414,12 +414,38 @@ class MealRepository {
 
   Future<RecommendationSearchPage> searchRecommendations(
     RecommendationQuery query,
-  ) {
-    return _recommendationApiService.searchRecommendations(query);
+  ) async {
+    final clientId = await _appSettingsService.getRecommendationClientId();
+    return _recommendationApiService.searchRecommendations(query, clientId);
   }
 
-  Future<RecommendationDetail> fetchRecommendationDetail(String id) {
-    return _recommendationApiService.fetchRecommendationDetail(id);
+  Future<RecommendationDetail> fetchRecommendationDetail(String id) async {
+    final clientId = await _appSettingsService.getRecommendationClientId();
+    return _recommendationApiService.fetchRecommendationDetail(id, clientId);
+  }
+
+  Future<RecommendationModerationResult> submitRecommendationVote({
+    required String recommendationId,
+    required String action,
+  }) async {
+    final clientId = await _appSettingsService.getRecommendationClientId();
+    return _recommendationApiService.submitVote(
+      recommendationId: recommendationId,
+      action: action,
+      clientId: clientId,
+    );
+  }
+
+  Future<RecommendationModerationResult> submitRecommendationReport({
+    required String recommendationId,
+    String? reason,
+  }) async {
+    final clientId = await _appSettingsService.getRecommendationClientId();
+    return _recommendationApiService.submitReport(
+      recommendationId: recommendationId,
+      clientId: clientId,
+      reason: reason,
+    );
   }
 
   List<RecommendationItem> getMockRecommendations() => const [];
