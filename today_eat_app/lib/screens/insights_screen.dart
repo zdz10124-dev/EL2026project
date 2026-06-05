@@ -22,6 +22,7 @@ import '../services/agent_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/section_card.dart';
 import '../widgets/themed_page_background.dart';
+import 'journal_notebook_page.dart' as optimized_journal;
 import 'network_recommendation_screen.dart';
 import 'nutrition_screen.dart';
 import 'preference_screen.dart';
@@ -289,7 +290,7 @@ class _JournalGeneratorPageState extends State<JournalGeneratorPage> {
                       ? null
                       : () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
-                              builder: (_) => JournalNotebookPage(
+                              builder: (_) => optimized_journal.OptimizedJournalNotebookPage(
                                 entries: journalEntries,
                                 style: style,
                               ),
@@ -384,11 +385,11 @@ class _JournalNotebookPageState extends State<JournalNotebookPage> {
             onSelected: _handleExportAction,
             itemBuilder: (context) => const [
               PopupMenuItem<String>(
-                value: 'save_image',
+                value: 'export_image',
                 child: Text('导出图片'),
               ),
               PopupMenuItem<String>(
-                value: 'share_pdf',
+                value: 'export_pdf',
                 child: Text('导出 PDF'),
               ),
             ],
@@ -464,21 +465,16 @@ class _JournalNotebookPageState extends State<JournalNotebookPage> {
 
   Future<void> _handleExportAction(String value) async {
     switch (value) {
-      case 'save_image':
-        await _saveAllPagesAsLongImage();
-        return;
-      case 'share_pdf':
-        await _saveAllPagesAsPdf(shareAfterSave: true);
-        return;
-      case 'share_image':
+      case 'export_image':
         await _shareAllPagesAsLongImage();
         return;
-      case 'save_pdf':
-        await _saveAllPagesAsPdf(shareAfterSave: false);
+      case 'export_pdf':
+        await _saveAllPagesAsPdf(shareAfterSave: true);
         return;
     }
   }
 
+  // ignore: unused_element
   Future<void> _saveAllPagesAsLongImage() async {
     await _runExportTask(() async {
       final file = await _buildLongImageFile();
@@ -623,11 +619,24 @@ class _JournalNotebookPageState extends State<JournalNotebookPage> {
   }
 
   Future<Uint8List> _captureCurrentPagePng() async {
+    await _waitForPaintStable();
     final boundary =
         _pageKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
     final image = await boundary.toImage(pixelRatio: 3);
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     return byteData!.buffer.asUint8List();
+  }
+
+  Future<void> _waitForPaintStable() async {
+    for (var attempt = 0; attempt < 8; attempt++) {
+      await _waitForNextFrame();
+      final renderObject = _pageKey.currentContext?.findRenderObject();
+      if (renderObject case final RenderRepaintBoundary boundary
+          when !boundary.debugNeedsPaint) {
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 16));
+    }
   }
 
   Uint8List _stitchImagesVertically(List<Uint8List> pageBytes) {

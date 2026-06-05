@@ -11,6 +11,7 @@ import '../services/llm_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/rating_stars.dart';
 import '../widgets/section_card.dart';
+import '../widgets/themed_page_background.dart';
 import 'package:http/http.dart' as http;
 
 class SettingsScreen extends StatefulWidget {
@@ -816,27 +817,55 @@ class _AiConfigScreenState extends State<_AiConfigScreen> {
 
 // ===== 本地数据管理页面 =====
 
-class LocalDataManagementPage extends StatelessWidget {
+class LocalDataManagementPage extends StatefulWidget {
   const LocalDataManagementPage({super.key, required this.repository});
 
   final MealRepository repository;
 
   @override
+  State<LocalDataManagementPage> createState() => _LocalDataManagementPageState();
+}
+
+class _LocalDataManagementPageState extends State<LocalDataManagementPage> {
+  late Future<LocalDataSummary> _summaryFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _summaryFuture = widget.repository.getLocalDataSummary();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reload();
+    });
+  }
+
+  Future<void> _reload() async {
+    await widget.repository.refreshRecords();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _summaryFuture = widget.repository.getLocalDataSummary();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('本地数据管理')),
-      body: FutureBuilder<LocalDataSummary>(
-        future: repository.getLocalDataSummary(),
-        builder: (context, summarySnapshot) {
-          return StreamBuilder<List<MealRecord>>(
-            stream: repository.recordsStream,
-            initialData: const [],
-            builder: (context, recordSnapshot) {
-              final records = recordSnapshot.data ?? const <MealRecord>[];
-              final summary = summarySnapshot.data;
-              return ListView(
-                padding: const EdgeInsets.all(20),
-                children: [
+      body: ThemedPageBackground(
+        child: FutureBuilder<LocalDataSummary>(
+          future: _summaryFuture,
+          builder: (context, summarySnapshot) {
+            return StreamBuilder<List<MealRecord>>(
+              stream: widget.repository.recordsStream,
+              initialData: const [],
+              builder: (context, recordSnapshot) {
+                final records = recordSnapshot.data ?? const <MealRecord>[];
+                final summary = summarySnapshot.data;
+                return ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
                   Wrap(
                     spacing: 12,
                     runSpacing: 12,
@@ -857,7 +886,7 @@ class LocalDataManagementPage extends StatelessWidget {
                         title: '数据库占用',
                         value: summary == null
                             ? '...'
-                            : repository.formatBytes(summary.databaseBytes),
+                            : widget.repository.formatBytes(summary.databaseBytes),
                       ),
                     ],
                   ),
@@ -919,11 +948,12 @@ class LocalDataManagementPage extends StatelessWidget {
                                     await Navigator.of(context).push(
                                       MaterialPageRoute<void>(
                                         builder: (_) => RecordEditorPage(
-                                          repository: repository,
+                                          repository: widget.repository,
                                           record: record,
                                         ),
                                       ),
                                     );
+                                    await _reload();
                                   } else if (value == 'delete') {
                                     final confirm = await showDialog<bool>(
                                       context: context,
@@ -947,7 +977,14 @@ class LocalDataManagementPage extends StatelessWidget {
                                       ),
                                     );
                                     if (confirm == true) {
-                                      await repository.deleteRecord(record);
+                                      await widget.repository.deleteRecord(record);
+                                      await _reload();
+                                      if (!mounted) {
+                                        return;
+                                      }
+                                      ScaffoldMessenger.of(this.context).showSnackBar(
+                                        const SnackBar(content: Text('已删除该记录')),
+                                      );
                                     }
                                   }
                                 },
@@ -967,11 +1004,12 @@ class LocalDataManagementPage extends StatelessWidget {
                         ),
                       ),
                     ),
-                ],
-              );
-            },
-          );
-        },
+                  ],
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }
@@ -1029,10 +1067,12 @@ class _RecordEditorPageState extends State<RecordEditorPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('编辑记录')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
+      body: ThemedPageBackground(
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
           if (File(widget.record.imagePath).existsSync())
             ClipRRect(
               borderRadius: BorderRadius.circular(20),
@@ -1094,11 +1134,12 @@ class _RecordEditorPageState extends State<RecordEditorPage> {
             ),
           ),
           const SizedBox(height: 18),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            child: const Text('保存修改'),
-          ),
-        ],
+            FilledButton(
+              onPressed: _saving ? null : _save,
+              child: const Text('保存修改'),
+            ),
+          ],
+        ),
       ),
     );
   }

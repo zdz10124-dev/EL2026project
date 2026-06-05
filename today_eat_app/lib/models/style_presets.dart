@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'ui_config.dart';
 
-enum AppStyleId { marketDay, retroDiner, matchaAtelier, cobaltJazz }
+enum AppStyleId { marketDay, retroDiner, matchaAtelier }
 
 enum DiaryStyleId { floralGarden, retroMenu, midnightCinema, receiptCollage }
 
@@ -144,7 +144,7 @@ class AppStyleCatalog {
       backgroundTop: Color(0xFFFFF3E7),
       backgroundBottom: Color(0xFFF7DCC7),
       ornamentColor: Color(0x33D96C3D),
-      cardColor: Color(0xFFFFFBF7),
+      cardColor: Color(0xD1FFFBF7),
       cardBorderColor: Color(0xFFEAC4A7),
       shadowColor: Color(0x22B35D37),
       heroStart: Color(0xFFD96C3D),
@@ -159,7 +159,7 @@ class AppStyleCatalog {
       backgroundTop: Color(0xFFFFF8EF),
       backgroundBottom: Color(0xFFF7E2D7),
       ornamentColor: Color(0x33C83E4D),
-      cardColor: Color(0xFFFFFCF6),
+      cardColor: Color(0xD1FFFCF6),
       cardBorderColor: Color(0xFFC83E4D),
       shadowColor: Color(0x223F8E83),
       heroStart: Color(0xFFC83E4D),
@@ -174,28 +174,13 @@ class AppStyleCatalog {
       backgroundTop: Color(0xFFF5F7EE),
       backgroundBottom: Color(0xFFE2ECD9),
       ornamentColor: Color(0x334B7A52),
-      cardColor: Color(0xFFFFFEFA),
+      cardColor: Color(0xD1FFFEFA),
       cardBorderColor: Color(0xFFC6D5BF),
       shadowColor: Color(0x224B7A52),
       heroStart: Color(0xFF4B7A52),
       heroEnd: Color(0xFFCE8B5B),
       backgroundAssetPath: 'assets/theme/app_bg_matcha.png',
       decideButtonAssetPath: 'assets/theme/decide_matcha.png',
-    ),
-    AppChromeTheme(
-      id: AppStyleId.cobaltJazz,
-      name: '钴蓝',
-      subtitle: '夜宴舞台感',
-      backgroundTop: Color(0xFFF2F2F8),
-      backgroundBottom: Color(0xFFD9E2F6),
-      ornamentColor: Color(0x33284B8F),
-      cardColor: Color(0xFFFCFCFF),
-      cardBorderColor: Color(0xFF284B8F),
-      shadowColor: Color(0x22284B8F),
-      heroStart: Color(0xFF284B8F),
-      heroEnd: Color(0xFFB18A4A),
-      backgroundAssetPath: 'assets/theme/app_bg_cobalt.png',
-      decideButtonAssetPath: 'assets/theme/decide_cobalt.png',
     ),
   ];
 
@@ -204,8 +189,8 @@ class AppStyleCatalog {
       id: DiaryStyleId.floralGarden,
       name: '花草',
       description: '压花纸页与柔软手账装饰',
-      pageBackgroundColor: Color(0xFFF3E7D8),
-      paperColor: Color(0xFFFFFCF5),
+      pageBackgroundColor: Color(0xD1F3E7D8),
+      paperColor: Color(0xD1FFFCF5),
       inkColor: Color(0xFF604F43),
       accentColor: Color(0xFFB76D79),
       shadowColor: Color(0x223C5C46),
@@ -217,8 +202,8 @@ class AppStyleCatalog {
       id: DiaryStyleId.retroMenu,
       name: '餐牌',
       description: '棋盘角标和老餐厅菜单感',
-      pageBackgroundColor: Color(0xFFF8E5D4),
-      paperColor: Color(0xFFFFFAF1),
+      pageBackgroundColor: Color(0xD1F8E5D4),
+      paperColor: Color(0xD1FFFAF1),
       inkColor: Color(0xFF462C22),
       accentColor: Color(0xFFC83E4D),
       shadowColor: Color(0x223F8E83),
@@ -245,8 +230,8 @@ class AppStyleCatalog {
       id: DiaryStyleId.receiptCollage,
       name: '拼贴',
       description: '票据、印章和便签混排',
-      pageBackgroundColor: Color(0xFFE8DED0),
-      paperColor: Color(0xFFFFFBF3),
+      pageBackgroundColor: Color(0xD1E8DED0),
+      paperColor: Color(0xD1FFFBF3),
       inkColor: Color(0xFF4F463E),
       accentColor: Color(0xFFB2603A),
       shadowColor: Color(0x222D241F),
@@ -290,7 +275,7 @@ class AppStyleCatalog {
       ),
       scaffoldBackgroundColor: Colors.transparent,
       canvasColor: Colors.transparent,
-      cardColor: chrome.cardColor,
+      cardColor: chrome.cardColor.withValues(alpha: 0.82),
       snackBarTheme: const SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
       ),
@@ -307,7 +292,7 @@ class AppStyleCatalog {
         iconTheme: IconThemeData(color: chrome.inkOnSurface),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: chrome.cardColor.withValues(alpha: 0.92),
+        backgroundColor: chrome.cardColor.withValues(alpha: 0.78),
         indicatorColor: chrome.heroEnd.withValues(alpha: 0.18),
         labelTextStyle: WidgetStatePropertyAll(
           TextStyle(
@@ -318,7 +303,7 @@ class AppStyleCatalog {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.84),
+        fillColor: chrome.cardColor.withValues(alpha: 0.72),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(config.layout.inputRadius),
           borderSide: BorderSide(color: chrome.cardBorderColor),

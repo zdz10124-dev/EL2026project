@@ -866,16 +866,26 @@ def report_recommendation(record_id: str, payload: ReportRequest, request: Reque
         subject_key = record["dish_name_normalized"]
         fingerprint = recommendation_fingerprint(request)
         now = now_iso()
-        connection.execute(
-            """
-            INSERT INTO recommendation_reports(subject_key, fingerprint, reason, created_at, updated_at)
-            VALUES(?, ?, ?, ?, ?)
-            ON CONFLICT(subject_key, fingerprint) DO UPDATE SET
-                reason = excluded.reason,
-                updated_at = excluded.updated_at
-            """,
-            (subject_key, fingerprint, parse_optional_text(payload.reason), now, now),
-        )
+        existing = connection.execute(
+            "SELECT 1 FROM recommendation_reports WHERE subject_key = ? AND fingerprint = ?",
+            (subject_key, fingerprint),
+        ).fetchone()
+        if existing:
+            connection.execute(
+                "DELETE FROM recommendation_reports WHERE subject_key = ? AND fingerprint = ?",
+                (subject_key, fingerprint),
+            )
+        else:
+            connection.execute(
+                """
+                INSERT INTO recommendation_reports(subject_key, fingerprint, reason, created_at, updated_at)
+                VALUES(?, ?, ?, ?, ?)
+                ON CONFLICT(subject_key, fingerprint) DO UPDATE SET
+                    reason = excluded.reason,
+                    updated_at = excluded.updated_at
+                """,
+                (subject_key, fingerprint, parse_optional_text(payload.reason), now, now),
+            )
         feedback = evaluate_and_apply_moderation(connection, subject_key, fingerprint)
 
     return {

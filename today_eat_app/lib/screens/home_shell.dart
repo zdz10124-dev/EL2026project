@@ -231,26 +231,6 @@ class _BackdropAccent extends StatelessWidget {
             ),
           ],
         );
-      case AppStyleId.cobaltJazz:
-        return Stack(
-          children: [
-            Positioned(
-              top: 108,
-              right: 20,
-              child: _AccentSpark(
-                color: chrome.heroEnd.withValues(alpha: 0.30),
-                size: 70,
-              ),
-            ),
-            Positioned(
-              bottom: 160,
-              left: 24,
-              child: _CurtainLines(
-                color: chrome.heroStart.withValues(alpha: 0.15),
-              ),
-            ),
-          ],
-        );
     }
   }
 }
@@ -416,32 +396,6 @@ class _LeafBranch extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _CurtainLines extends StatelessWidget {
-  const _CurtainLines({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: List.generate(
-        5,
-        (_) => Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: Container(
-            width: 10,
-            height: 120,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-        ),
       ),
     );
   }

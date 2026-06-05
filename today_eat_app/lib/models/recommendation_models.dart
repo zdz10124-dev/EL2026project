@@ -161,6 +161,30 @@ class RecommendationFeedbackSummary {
   final bool isHidden;
   final String? hiddenReason;
 
+  RecommendationFeedbackSummary copyWith({
+    int? upvoteCount,
+    int? downvoteCount,
+    int? reportCount,
+    int? voteTotal,
+    double? downvoteRatio,
+    String? currentVote,
+    bool? currentReported,
+    bool? isHidden,
+    String? hiddenReason,
+  }) {
+    return RecommendationFeedbackSummary(
+      upvoteCount: upvoteCount ?? this.upvoteCount,
+      downvoteCount: downvoteCount ?? this.downvoteCount,
+      reportCount: reportCount ?? this.reportCount,
+      voteTotal: voteTotal ?? this.voteTotal,
+      downvoteRatio: downvoteRatio ?? this.downvoteRatio,
+      currentVote: currentVote ?? this.currentVote,
+      currentReported: currentReported ?? this.currentReported,
+      isHidden: isHidden ?? this.isHidden,
+      hiddenReason: hiddenReason ?? this.hiddenReason,
+    );
+  }
+
   factory RecommendationFeedbackSummary.fromMap(Map<String, Object?> map) {
     return RecommendationFeedbackSummary(
       upvoteCount: (map['upvote_count'] as num?)?.toInt() ?? 0,
@@ -228,6 +252,30 @@ class RecommendationItem {
 
   /// 兼容旧界面字段。
   String get description => reason;
+
+  RecommendationItem copyWith({
+    String? id,
+    String? dishName,
+    String? location,
+    double? price,
+    double? rating,
+    RecommendationAggregate? aggregate,
+    double? distanceMeters,
+    String? reason,
+    RecommendationFeedbackSummary? feedback,
+  }) {
+    return RecommendationItem(
+      id: id ?? this.id,
+      dishName: dishName ?? this.dishName,
+      location: location ?? this.location,
+      price: price ?? this.price,
+      rating: rating ?? this.rating,
+      aggregate: aggregate ?? this.aggregate,
+      distanceMeters: distanceMeters ?? this.distanceMeters,
+      reason: reason ?? this.reason,
+      feedback: feedback ?? this.feedback,
+    );
+  }
 
   factory RecommendationItem.fromMap(Map<String, Object?> map) {
     return RecommendationItem(
@@ -297,6 +345,36 @@ class RecommendationDetail {
   /// 推荐理由。
   final String? reason;
   final RecommendationFeedbackSummary feedback;
+
+  RecommendationDetail copyWith({
+    String? id,
+    String? dishName,
+    String? location,
+    double? price,
+    double? rating,
+    DateTime? createdAt,
+    RecommendationAggregate? aggregate,
+    String? comment,
+    String? imageUrl,
+    double? distanceMeters,
+    String? reason,
+    RecommendationFeedbackSummary? feedback,
+  }) {
+    return RecommendationDetail(
+      id: id ?? this.id,
+      dishName: dishName ?? this.dishName,
+      location: location ?? this.location,
+      price: price ?? this.price,
+      rating: rating ?? this.rating,
+      createdAt: createdAt ?? this.createdAt,
+      aggregate: aggregate ?? this.aggregate,
+      comment: comment ?? this.comment,
+      imageUrl: imageUrl ?? this.imageUrl,
+      distanceMeters: distanceMeters ?? this.distanceMeters,
+      reason: reason ?? this.reason,
+      feedback: feedback ?? this.feedback,
+    );
+  }
 
   factory RecommendationDetail.fromMap(Map<String, Object?> map) {
     return RecommendationDetail(

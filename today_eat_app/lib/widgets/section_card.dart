@@ -19,9 +19,9 @@ class SectionCard extends StatelessWidget {
       width: double.infinity,
       padding: padding,
       decoration: BoxDecoration(
-        color: chrome.cardColor,
+        color: chrome.cardColor.withValues(alpha: 0.82),
         border: Border.all(
-          color: chrome.cardBorderColor,
+          color: chrome.cardBorderColor.withValues(alpha: 0.72),
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [

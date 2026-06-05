@@ -34,6 +34,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
@@ -464,14 +465,43 @@ class MealRepository {
       await imageDir.create(recursive: true);
     }
 
-    final extension = p.extension(sourcePath);
-    final filename = 'meal_${DateTime.now().millisecondsSinceEpoch}$extension';
+    final filename = 'meal_${DateTime.now().millisecondsSinceEpoch}.jpg';
     final target = File(p.join(imageDir.path, filename));
     if (File(sourcePath).absolute.path == target.absolute.path) {
       return target.path;
     }
+    final compressed = await _compressLocalImage(sourcePath);
+    if (compressed != null) {
+      await target.writeAsBytes(compressed, flush: true);
+      return target.path;
+    }
     await File(sourcePath).copy(target.path);
     return target.path;
+  }
+
+  Future<List<int>?> _compressLocalImage(String sourcePath) async {
+    try {
+      final bytes = await File(sourcePath).readAsBytes();
+      final original = img.decodeImage(bytes);
+      if (original == null) {
+        return null;
+      }
+
+      const maxEdge = 1600;
+      img.Image working = original;
+      final longestEdge = max(working.width, working.height);
+      if (longestEdge > maxEdge) {
+        if (working.width >= working.height) {
+          working = img.copyResize(working, width: maxEdge);
+        } else {
+          working = img.copyResize(working, height: maxEdge);
+        }
+      }
+
+      return img.encodeJpg(working, quality: 82);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<MealSuggestion> suggestMeal(DecisionMode mode) async {
