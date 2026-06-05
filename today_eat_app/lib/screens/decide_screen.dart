@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../models/style_presets.dart';
 import '../models/ui_config.dart';
 import '../services/meal_repository.dart';
 import '../widgets/section_card.dart';
@@ -38,6 +39,7 @@ class _DecideScreenState extends State<DecideScreen> {
   @override
   Widget build(BuildContext context) {
     final decision = widget.config.decision;
+    final chrome = context.appChrome;
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.symmetric(
@@ -63,13 +65,13 @@ class _DecideScreenState extends State<DecideScreen> {
                   height: widget.config.layout.heroButtonSize,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [
-                        widget.config.theme.seedColor,
-                        widget.config.theme.accentColor,
-                      ],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
+                    image: DecorationImage(
+                      image: AssetImage(chrome.decideButtonAssetPath),
+                      fit: BoxFit.cover,
+                    ),
+                    border: Border.all(
+                      color: chrome.cardColor.withValues(alpha: 0.92),
+                      width: 6,
                     ),
                     boxShadow: const [
                       BoxShadow(
@@ -79,41 +81,69 @@ class _DecideScreenState extends State<DecideScreen> {
                       ),
                     ],
                   ),
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.all(28),
-                  child: Text(
-                    _loading ? '思考中...' : (_suggestion?.title ?? '点我决定'),
-                    textAlign: TextAlign.center,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.headlineSmall?.copyWith(color: Colors.white),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.16),
+                          Colors.black.withValues(alpha: 0.42),
+                        ],
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.all(28),
+                    child: Text(
+                      _loading ? '思考中...' : (_suggestion?.title ?? '点我决定'),
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            shadows: const [
+                              Shadow(
+                                color: Color(0x66000000),
+                                blurRadius: 12,
+                                offset: Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                    ),
                   ),
                 ),
               ),
             ),
             const SizedBox(height: 24),
-            DropdownButtonFormField<DecisionMode>(
-              initialValue: _mode,
-              decoration: const InputDecoration(labelText: '选择模式'),
-              items: [
-                DropdownMenuItem(
-                  value: DecisionMode.random,
-                  child: Text(decision.randomModeName),
+            Row(
+              children: [
+                Expanded(
+                  child: _ModeCard(
+                    title: decision.randomModeName,
+                    icon: Icons.casino_rounded,
+                    selected: _mode == DecisionMode.random,
+                    onTap: () {
+                      setState(() => _mode = DecisionMode.random);
+                      _resetSuggestionState();
+                    },
+                  ),
                 ),
-                DropdownMenuItem(
-                  value: DecisionMode.preference,
-                  child: Text(decision.preferenceModeName),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _ModeCard(
+                    title: decision.preferenceModeName,
+                    icon: Icons.favorite_rounded,
+                    selected: _mode == DecisionMode.preference,
+                    onTap: () {
+                      setState(() => _mode = DecisionMode.preference);
+                      _resetSuggestionState();
+                    },
+                  ),
                 ),
               ],
-              onChanged: (value) {
-                if (value == null) {
-                  return;
-                }
-                setState(() => _mode = value);
-                _resetSuggestionState();
-              },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Text(
               _mode == DecisionMode.random
                   ? decision.randomModeDescription
@@ -184,5 +214,58 @@ class _DecideScreenState extends State<DecideScreen> {
       _suggestion = null;
       _loading = false;
     });
+  }
+}
+
+class _ModeCard extends StatelessWidget {
+  const _ModeCard({
+    required this.title,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String title;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        decoration: BoxDecoration(
+          color: selected
+              ? colorScheme.primary.withValues(alpha: 0.12)
+              : Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? colorScheme.primary
+                : colorScheme.outline.withValues(alpha: 0.22),
+            width: selected ? 1.6 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: selected ? colorScheme.primary : null),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                color: selected ? colorScheme.primary : null,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

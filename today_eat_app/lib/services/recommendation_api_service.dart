@@ -33,6 +33,12 @@ class RecommendationUploadResult {
   final DateTime updatedAt;
 }
 
+class RecommendationModerationResult {
+  const RecommendationModerationResult({required this.feedback});
+
+  final RecommendationFeedbackSummary feedback;
+}
+
 class RecommendationApiService {
   RecommendationApiService({http.Client? client, Uri? baseUri})
     : _client = client ?? http.Client(),
@@ -45,11 +51,15 @@ class RecommendationApiService {
   /// [对外接口] 请求联网推荐列表。
   Future<RecommendationSearchPage> searchRecommendations(
     RecommendationQuery query,
+    String clientId,
   ) async {
     final response = await _client
         .post(
           _baseUri.resolve('/v1/recommendations/search'),
-          headers: {'content-type': 'application/json; charset=utf-8'},
+          headers: {
+            'content-type': 'application/json; charset=utf-8',
+            'x-client-id': clientId,
+          },
           body: jsonEncode(query.toJson()),
         )
         .timeout(const Duration(seconds: 12));
@@ -63,9 +73,15 @@ class RecommendationApiService {
   }
 
   /// [对外接口] 请求联网推荐详情。
-  Future<RecommendationDetail> fetchRecommendationDetail(String id) async {
+  Future<RecommendationDetail> fetchRecommendationDetail(
+    String id,
+    String clientId,
+  ) async {
     final response = await _client
-        .get(_baseUri.resolve('/v1/recommendations/$id'))
+        .get(
+          _baseUri.resolve('/v1/recommendations/$id'),
+          headers: {'x-client-id': clientId},
+        )
         .timeout(const Duration(seconds: 12));
 
     final body = _decodeJson(response.body);
@@ -125,6 +141,62 @@ class RecommendationApiService {
       remoteId: data['remote_id'] as String? ?? '',
       updatedAt: DateTime.tryParse(data['updated_at'] as String? ?? '') ??
           DateTime.now(),
+    );
+  }
+
+  Future<RecommendationModerationResult> submitVote({
+    required String recommendationId,
+    required String action,
+    required String clientId,
+  }) async {
+    final response = await _client
+        .post(
+          _baseUri.resolve('/v1/recommendations/$recommendationId/vote'),
+          headers: {
+            'content-type': 'application/json; charset=utf-8',
+            'x-client-id': clientId,
+          },
+          body: jsonEncode({'action': action}),
+        )
+        .timeout(const Duration(seconds: 12));
+
+    final body = _decodeJson(response.body);
+    _throwIfFailed(response.statusCode, body);
+
+    final data = (body['data'] as Map<String, dynamic>? ?? const {})
+        .cast<String, Object?>();
+    return RecommendationModerationResult(
+      feedback: RecommendationFeedbackSummary.fromMap(
+        data['feedback'] as Map<String, Object?>? ?? const {},
+      ),
+    );
+  }
+
+  Future<RecommendationModerationResult> submitReport({
+    required String recommendationId,
+    required String clientId,
+    String? reason,
+  }) async {
+    final response = await _client
+        .post(
+          _baseUri.resolve('/v1/recommendations/$recommendationId/report'),
+          headers: {
+            'content-type': 'application/json; charset=utf-8',
+            'x-client-id': clientId,
+          },
+          body: jsonEncode({'reason': reason}),
+        )
+        .timeout(const Duration(seconds: 12));
+
+    final body = _decodeJson(response.body);
+    _throwIfFailed(response.statusCode, body);
+
+    final data = (body['data'] as Map<String, dynamic>? ?? const {})
+        .cast<String, Object?>();
+    return RecommendationModerationResult(
+      feedback: RecommendationFeedbackSummary.fromMap(
+        data['feedback'] as Map<String, Object?>? ?? const {},
+      ),
     );
   }
 

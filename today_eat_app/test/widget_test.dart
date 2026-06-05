@@ -1,18 +1,14 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:today_eat_app/main.dart';
 import 'package:today_eat_app/models/ui_config.dart';
 
 void main() {
   testWidgets('应用可以正常渲染底部导航', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+
     final config = UiConfig(
       appTitle: '今天吃什么',
       appSubtitle: '测试副标题',
@@ -65,9 +61,17 @@ void main() {
     );
 
     await tester.pumpWidget(TodayEatApp(config: config));
-    await tester.pumpAndSettle();
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+      if (find.byType(NavigationBar).evaluate().isNotEmpty) {
+        break;
+      }
+    }
 
-    expect(find.text('记录'), findsOneWidget);
-    expect(find.text('吃什么'), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byIcon(Icons.photo_camera_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.ramen_dining_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.dashboard_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
   });
 }

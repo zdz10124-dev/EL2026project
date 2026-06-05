@@ -138,6 +138,68 @@ class RecommendationAggregate {
   }
 }
 
+class RecommendationFeedbackSummary {
+  const RecommendationFeedbackSummary({
+    required this.upvoteCount,
+    required this.downvoteCount,
+    required this.reportCount,
+    required this.voteTotal,
+    required this.downvoteRatio,
+    required this.currentVote,
+    required this.currentReported,
+    required this.isHidden,
+    this.hiddenReason,
+  });
+
+  final int upvoteCount;
+  final int downvoteCount;
+  final int reportCount;
+  final int voteTotal;
+  final double downvoteRatio;
+  final String? currentVote;
+  final bool currentReported;
+  final bool isHidden;
+  final String? hiddenReason;
+
+  RecommendationFeedbackSummary copyWith({
+    int? upvoteCount,
+    int? downvoteCount,
+    int? reportCount,
+    int? voteTotal,
+    double? downvoteRatio,
+    String? currentVote,
+    bool? currentReported,
+    bool? isHidden,
+    String? hiddenReason,
+  }) {
+    return RecommendationFeedbackSummary(
+      upvoteCount: upvoteCount ?? this.upvoteCount,
+      downvoteCount: downvoteCount ?? this.downvoteCount,
+      reportCount: reportCount ?? this.reportCount,
+      voteTotal: voteTotal ?? this.voteTotal,
+      downvoteRatio: downvoteRatio ?? this.downvoteRatio,
+      currentVote: currentVote ?? this.currentVote,
+      currentReported: currentReported ?? this.currentReported,
+      isHidden: isHidden ?? this.isHidden,
+      hiddenReason: hiddenReason ?? this.hiddenReason,
+    );
+  }
+
+  factory RecommendationFeedbackSummary.fromMap(Map<String, Object?> map) {
+    return RecommendationFeedbackSummary(
+      upvoteCount: (map['upvote_count'] as num?)?.toInt() ?? 0,
+      downvoteCount: (map['downvote_count'] as num?)?.toInt() ?? 0,
+      reportCount: (map['report_count'] as num?)?.toInt() ?? 0,
+      voteTotal: (map['vote_total'] as num?)?.toInt() ?? 0,
+      downvoteRatio: (map['downvote_ratio'] as num?)?.toDouble() ?? 0,
+      currentVote: map['current_vote'] as String?,
+      currentReported: map['current_reported'] == true,
+      isHidden: map['is_hidden'] == true,
+      hiddenReason: map['hidden_reason'] as String?,
+    );
+  }
+}
+
 class RecommendationItem {
   const RecommendationItem({
     required this.id,
@@ -148,6 +210,7 @@ class RecommendationItem {
     required this.aggregate,
     this.distanceMeters,
     required this.reason,
+    required this.feedback,
   });
 
   /// 代表记录的远端主键。
@@ -167,6 +230,7 @@ class RecommendationItem {
 
   /// 同菜品聚合统计。
   final RecommendationAggregate aggregate;
+  final RecommendationFeedbackSummary feedback;
 
   /// 与当前用户距离，单位米。
   final double? distanceMeters;
@@ -189,6 +253,30 @@ class RecommendationItem {
   /// 兼容旧界面字段。
   String get description => reason;
 
+  RecommendationItem copyWith({
+    String? id,
+    String? dishName,
+    String? location,
+    double? price,
+    double? rating,
+    RecommendationAggregate? aggregate,
+    double? distanceMeters,
+    String? reason,
+    RecommendationFeedbackSummary? feedback,
+  }) {
+    return RecommendationItem(
+      id: id ?? this.id,
+      dishName: dishName ?? this.dishName,
+      location: location ?? this.location,
+      price: price ?? this.price,
+      rating: rating ?? this.rating,
+      aggregate: aggregate ?? this.aggregate,
+      distanceMeters: distanceMeters ?? this.distanceMeters,
+      reason: reason ?? this.reason,
+      feedback: feedback ?? this.feedback,
+    );
+  }
+
   factory RecommendationItem.fromMap(Map<String, Object?> map) {
     return RecommendationItem(
       id: map['id'] as String? ?? '',
@@ -201,6 +289,9 @@ class RecommendationItem {
       ),
       distanceMeters: (map['distance_meters'] as num?)?.toDouble(),
       reason: map['reason'] as String? ?? '',
+      feedback: RecommendationFeedbackSummary.fromMap(
+        map['feedback'] as Map<String, Object?>? ?? const {},
+      ),
     );
   }
 }
@@ -218,6 +309,7 @@ class RecommendationDetail {
     this.imageUrl,
     this.distanceMeters,
     this.reason,
+    required this.feedback,
   });
 
   /// 代表记录的远端主键。
@@ -252,6 +344,37 @@ class RecommendationDetail {
 
   /// 推荐理由。
   final String? reason;
+  final RecommendationFeedbackSummary feedback;
+
+  RecommendationDetail copyWith({
+    String? id,
+    String? dishName,
+    String? location,
+    double? price,
+    double? rating,
+    DateTime? createdAt,
+    RecommendationAggregate? aggregate,
+    String? comment,
+    String? imageUrl,
+    double? distanceMeters,
+    String? reason,
+    RecommendationFeedbackSummary? feedback,
+  }) {
+    return RecommendationDetail(
+      id: id ?? this.id,
+      dishName: dishName ?? this.dishName,
+      location: location ?? this.location,
+      price: price ?? this.price,
+      rating: rating ?? this.rating,
+      createdAt: createdAt ?? this.createdAt,
+      aggregate: aggregate ?? this.aggregate,
+      comment: comment ?? this.comment,
+      imageUrl: imageUrl ?? this.imageUrl,
+      distanceMeters: distanceMeters ?? this.distanceMeters,
+      reason: reason ?? this.reason,
+      feedback: feedback ?? this.feedback,
+    );
+  }
 
   factory RecommendationDetail.fromMap(Map<String, Object?> map) {
     return RecommendationDetail(
@@ -270,6 +393,9 @@ class RecommendationDetail {
       imageUrl: map['image_url'] as String?,
       distanceMeters: (map['distance_meters'] as num?)?.toDouble(),
       reason: map['reason'] as String?,
+      feedback: RecommendationFeedbackSummary.fromMap(
+        map['feedback'] as Map<String, Object?>? ?? const {},
+      ),
     );
   }
 }

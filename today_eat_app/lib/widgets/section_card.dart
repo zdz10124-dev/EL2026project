@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../models/style_presets.dart';
+
 class SectionCard extends StatelessWidget {
   const SectionCard({
     super.key,
@@ -12,15 +14,19 @@ class SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final chrome = context.appChrome;
     return Container(
       width: double.infinity,
       padding: padding,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: chrome.cardColor.withValues(alpha: 0.82),
+        border: Border.all(
+          color: chrome.cardBorderColor.withValues(alpha: 0.72),
+        ),
         borderRadius: BorderRadius.circular(24),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x12000000),
+            color: chrome.shadowColor,
             blurRadius: 20,
             offset: Offset(0, 10),
           ),

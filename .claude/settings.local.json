@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(cp cybercoach-server/.env.example cybercoach-server/.env)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(find /c/Projects/2026EL -type f \\\\\\( -name \"*.py\" -o -name \"*.dart\" -o -name \"*.yaml\" -o -name \"*.yml\" -o -name \"*.json\" -o -name \"*.txt\" -o -name \"*.md\" -o -name \"*.bat\" -o -name \"*.sh\" -o -name \"*.xml\" -o -name \"*.gradle\" -o -name \"*.properties\" -o -name \"*.cfg\" -o -name \"*.ini\" -o -name \"*.toml\" -o -name \"*.html\" -o -name \"*.css\" -o -name \"*.js\" -o -name \"*.ts\" -o -name \"*.kt\" -o -name \"*.java\" -o -name \"*.kts\" \\\\\\) ! -path \"*/build/*\" ! -path \"*/.gradle/*\" ! -path \"*/__pycache__/*\" ! -path \"*/android/app/build/*\" ! -path \"*/android/.gradle/*\" ! -path \"*/ios/*\" ! -path \"*/linux/*\" ! -path \"*/macos/*\" ! -path \"*/web/*\" ! -path \"*/windows/*\" ! -path \"*/\\\\.*\")"
     ]
   }
 }

@@ -12,6 +12,7 @@ import '../services/location_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/rating_stars.dart';
 import '../widgets/section_card.dart';
+import '../widgets/themed_page_background.dart';
 
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({
@@ -112,6 +113,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
+  // ignore: unused_element
   void _showAiNotConfiguredDialog() {
     showDialog(
       context: context,
@@ -182,6 +184,7 @@ class _EditMealScreenState extends State<EditMealScreen> {
   late final TextEditingController _dishController;
   late final TextEditingController _locationController;
   late final TextEditingController _priceController;
+  late final TextEditingController _commentController;
   late String _imagePath;
   late double _ratingValue;
   bool _ratingTouched = false;
@@ -212,6 +215,9 @@ class _EditMealScreenState extends State<EditMealScreen> {
     _priceController = TextEditingController(
       text: widget.initialDraft.priceText,
     );
+    _commentController = TextEditingController(
+      text: widget.initialDraft.commentText,
+    );
     _ratingValue = widget.initialDraft.ratingScore ?? 0;
     _ratingTouched = widget.initialDraft.ratingScore != null;
     _beginGpsLookup();
@@ -222,6 +228,7 @@ class _EditMealScreenState extends State<EditMealScreen> {
     _dishController.dispose();
     _locationController.dispose();
     _priceController.dispose();
+    _commentController.dispose();
     super.dispose();
   }
 
@@ -230,9 +237,11 @@ class _EditMealScreenState extends State<EditMealScreen> {
     final layout = widget.config.layout;
     final capture = widget.config.capture;
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('编辑记录')),
-      body: SafeArea(
-        child: SingleChildScrollView(
+      body: ThemedPageBackground(
+        child: SafeArea(
+          child: SingleChildScrollView(
           padding: EdgeInsets.symmetric(
             horizontal: layout.pageHorizontalPadding,
             vertical: layout.pageVerticalPadding,
@@ -287,6 +296,16 @@ class _EditMealScreenState extends State<EditMealScreen> {
                       decoration: InputDecoration(
                         labelText: capture.priceLabel,
                         hintText: capture.placeholderPrice,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: _commentController,
+                      minLines: 2,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        labelText: '描述栏（选填）',
+                        hintText: '比如口感、环境、分量、排队情况，或者你当时的感受',
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -425,6 +444,7 @@ class _EditMealScreenState extends State<EditMealScreen> {
               ),
             ],
           ),
+          ),
         ),
       ),
     );
@@ -436,6 +456,7 @@ class _EditMealScreenState extends State<EditMealScreen> {
         dishName: _dishController.text,
         location: _locationController.text,
         priceText: _priceController.text,
+        commentText: _commentController.text,
         ratingScore: _ratingTouched ? _ratingValue : null,
       ),
     );
@@ -458,6 +479,7 @@ class _EditMealScreenState extends State<EditMealScreen> {
       _dishController.text = draft.dishName;
       _locationController.text = draft.location;
       _priceController.text = draft.priceText;
+      _commentController.text = draft.commentText;
       _ratingTouched = draft.ratingScore != null;
       _ratingValue = draft.ratingScore ?? 0;
     });
@@ -497,6 +519,7 @@ class _EditMealScreenState extends State<EditMealScreen> {
       aiSpiceLevel: _aiSpiceLevel,
       aiIngredients: _aiIngredients,
       aiCuisine: _aiCuisine,
+      commentInput: _commentController.text,
       province: _lastLocationResult?.province,
       city: _lastLocationResult?.city,
       district: _lastLocationResult?.district,

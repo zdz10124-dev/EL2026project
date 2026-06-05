@@ -7,6 +7,7 @@ import '../models/nutrition_analysis.dart';
 import '../services/agent_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/section_card.dart';
+import '../widgets/themed_page_background.dart';
 
 class NutritionScreen extends StatefulWidget {
   const NutritionScreen({
@@ -126,6 +127,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('营养分析'),
         actions: [
@@ -139,9 +141,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
             ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
+      body: ThemedPageBackground(
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
           Row(
             children: [
               _PeriodChip(
@@ -183,7 +186,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
             const SizedBox(height: 8),
             _buildAnalysis(),
           ],
-        ],
+          ],
+        ),
       ),
     );
   }
