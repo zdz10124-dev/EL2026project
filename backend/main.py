@@ -79,6 +79,16 @@ class ReportRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=240)
 
 
+class CommentRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=280)
+    author_name: str | None = Field(default=None, max_length=32)
+    author_avatar: str | None = Field(default=None, max_length=8)
+
+
+class VisibilityRequest(BaseModel):
+    active: bool
+
+
 class AiChatMessage(BaseModel):
     role: str
     content: Any
@@ -144,6 +154,10 @@ def initialize_database() -> None:
                 price REAL,
                 rating_score REAL,
                 comment TEXT,
+                owner_client_id TEXT,
+                uploader_name TEXT,
+                uploader_avatar TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1,
                 image_path TEXT,
                 image_filename TEXT,
                 uploaded_at TEXT NOT NULL,
@@ -191,6 +205,48 @@ def initialize_database() -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS recommendation_comments(
+                id TEXT PRIMARY KEY,
+                recommendation_id TEXT NOT NULL,
+                author_client_id TEXT NOT NULL,
+                author_name TEXT NOT NULL,
+                author_avatar TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_recommendation_comments_record
+            ON recommendation_comments(recommendation_id, created_at DESC)
+            """
+        )
+
+        existing_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(uploaded_records)").fetchall()
+        }
+        if "owner_client_id" not in existing_columns:
+            connection.execute(
+                "ALTER TABLE uploaded_records ADD COLUMN owner_client_id TEXT"
+            )
+        if "uploader_name" not in existing_columns:
+            connection.execute(
+                "ALTER TABLE uploaded_records ADD COLUMN uploader_name TEXT"
+            )
+        if "uploader_avatar" not in existing_columns:
+            connection.execute(
+                "ALTER TABLE uploaded_records ADD COLUMN uploader_avatar TEXT"
+            )
+        if "is_active" not in existing_columns:
+            connection.execute(
+                "ALTER TABLE uploaded_records ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1"
+            )
+            connection.execute("UPDATE uploaded_records SET is_active = 1")
 
 
 def now_iso() -> str:
@@ -198,7 +254,33 @@ def now_iso() -> str:
 
 
 def normalize_dish_name(value: str) -> str:
-    return " ".join(value.strip().lower().split())
+    normalized = (
+        value.strip()
+        .lower()
+        .replace("（", "(")
+        .replace("）", ")")
+        .replace("，", ",")
+        .replace("　", " ")
+    )
+    normalized = "".join(char for char in normalized if char not in " ,，.。!！?？-_/\\()（）[]【】")
+    synonyms = {
+        "西红柿": "番茄",
+        "蕃茄": "番茄",
+        "马铃薯": "土豆",
+        "洋芋": "土豆",
+        "薯仔": "土豆",
+        "鸡蛋": "蛋",
+        "米饭": "饭",
+        "白米饭": "饭",
+        "炒饭饭": "炒饭",
+    }
+    for source, target in synonyms.items():
+        normalized = normalized.replace(source, target)
+    suffixes = ("套餐", "盖饭", "便当", "小份", "大份", "中份", "特辣", "微辣", "中辣")
+    for suffix in suffixes:
+        if normalized.endswith(suffix) and len(normalized) > len(suffix) + 1:
+            normalized = normalized[: -len(suffix)]
+    return normalized or value.strip().lower()
 
 
 def parse_optional_float(value: str | None) -> float | None:
@@ -411,6 +493,9 @@ def build_recommendation_item(
         "rating": record["rating_score"],
         "distance_meters": round(distance_meters, 1) if distance_meters is not None else None,
         "reason": reason,
+        "description": record["comment"],
+        "uploader_name": record["uploader_name"],
+        "uploader_avatar": record["uploader_avatar"],
         "aggregate": aggregate,
         "feedback": feedback,
     }
@@ -436,7 +521,7 @@ def recommendation_reason(
 def fetch_all_records() -> list[sqlite3.Row]:
     with get_connection() as connection:
         rows = connection.execute(
-            "SELECT * FROM uploaded_records ORDER BY created_at DESC"
+            "SELECT * FROM uploaded_records WHERE is_active = 1 ORDER BY created_at DESC"
         ).fetchall()
     return rows
 
@@ -585,6 +670,8 @@ async def upload_record(
     district: str = Form(""),
     latitude: str = Form(""),
     longitude: str = Form(""),
+    uploader_name: str = Form(""),
+    uploader_avatar: str = Form(""),
     image: UploadFile | None = File(default=None),
 ) -> dict[str, Any]:
     client_record_id = client_record_id.strip()
@@ -597,6 +684,9 @@ async def upload_record(
     remote_id = ""
     image_filename = None
     image_path = None
+    owner_client_id = recommendation_fingerprint(request)
+    normalized_name = parse_optional_text(uploader_name) or "饭搭子"
+    normalized_avatar = parse_optional_text(uploader_avatar) or "🍜"
 
     with get_connection() as connection:
         existing = connection.execute(
@@ -635,6 +725,10 @@ async def upload_record(
             "price": parse_optional_float(price),
             "rating_score": parse_optional_float(rating_score),
             "comment": parse_optional_text(comment),
+            "owner_client_id": owner_client_id,
+            "uploader_name": normalized_name,
+            "uploader_avatar": normalized_avatar,
+            "is_active": 1,
             "image_path": image_path,
             "image_filename": image_filename,
             "uploaded_at": now,
@@ -646,12 +740,14 @@ async def upload_record(
             INSERT INTO uploaded_records(
                 id, client_record_id, created_at, updated_at, dish_name, dish_name_normalized,
                 location_text, province, city, district, latitude, longitude,
-                price, rating_score, comment, image_path, image_filename,
+                price, rating_score, comment, owner_client_id, uploader_name, uploader_avatar,
+                is_active, image_path, image_filename,
                 uploaded_at, updated_remote_at
             ) VALUES(
                 :id, :client_record_id, :created_at, :updated_at, :dish_name, :dish_name_normalized,
                 :location_text, :province, :city, :district, :latitude, :longitude,
-                :price, :rating_score, :comment, :image_path, :image_filename,
+                :price, :rating_score, :comment, :owner_client_id, :uploader_name, :uploader_avatar,
+                :is_active, :image_path, :image_filename,
                 :uploaded_at, :updated_remote_at
             )
             ON CONFLICT(client_record_id) DO UPDATE SET
@@ -668,6 +764,10 @@ async def upload_record(
                 price = excluded.price,
                 rating_score = excluded.rating_score,
                 comment = excluded.comment,
+                owner_client_id = excluded.owner_client_id,
+                uploader_name = excluded.uploader_name,
+                uploader_avatar = excluded.uploader_avatar,
+                is_active = excluded.is_active,
                 image_path = COALESCE(excluded.image_path, uploaded_records.image_path),
                 image_filename = COALESCE(excluded.image_filename, uploaded_records.image_filename),
                 updated_remote_at = excluded.updated_remote_at
@@ -789,7 +889,7 @@ def recommendation_detail(record_id: str, request: Request) -> dict[str, Any]:
         if record is None:
             raise HTTPException(status_code=404, detail="推荐记录不存在")
         related_rows = connection.execute(
-            "SELECT * FROM uploaded_records WHERE dish_name_normalized = ? ORDER BY created_at DESC",
+            "SELECT * FROM uploaded_records WHERE dish_name_normalized = ? AND is_active = 1 ORDER BY created_at DESC",
             (record["dish_name_normalized"],),
         ).fetchall()
         feedback = evaluate_and_apply_moderation(
@@ -797,13 +897,23 @@ def recommendation_detail(record_id: str, request: Request) -> dict[str, Any]:
             record["dish_name_normalized"],
             recommendation_fingerprint(request),
         )
-        if feedback["is_hidden"]:
+        if feedback["is_hidden"] or int(record["is_active"] or 0) == 0:
             raise HTTPException(status_code=410, detail="该推荐已被下架")
+
+        comment_rows = connection.execute(
+            """
+            SELECT * FROM recommendation_comments
+            WHERE recommendation_id = ?
+            ORDER BY created_at DESC
+            """,
+            (record_id,),
+        ).fetchall()
 
     aggregate = build_aggregate(list(related_rows))
     base_url = str(request.base_url).rstrip("/")
     image_url = f"{base_url}{record['image_path']}" if record["image_path"] else None
     distance_meters = None
+    fingerprint = recommendation_fingerprint(request)
     data = {
         "id": record["id"],
         "dish_name": record["dish_name"],
@@ -811,14 +921,115 @@ def recommendation_detail(record_id: str, request: Request) -> dict[str, Any]:
         "price": record["price"],
         "rating": record["rating_score"],
         "created_at": record["created_at"],
-        "comment": record["comment"],
+        "description": record["comment"],
         "image_url": image_url,
         "distance_meters": distance_meters,
         "reason": recommendation_reason(aggregate, distance_meters),
+        "uploader_name": record["uploader_name"],
+        "uploader_avatar": record["uploader_avatar"],
+        "comments": [
+            {
+                "id": row["id"],
+                "recommendation_id": row["recommendation_id"],
+                "author_name": row["author_name"],
+                "author_avatar": row["author_avatar"],
+                "content": row["content"],
+                "created_at": row["created_at"],
+                "is_mine": row["author_client_id"] == fingerprint,
+            }
+            for row in comment_rows
+        ],
         "aggregate": aggregate,
         "feedback": feedback,
     }
     return {"success": True, "message": "ok", "data": data}
+
+
+@app.post("/v1/recommendations/{record_id}/comments")
+def create_recommendation_comment(
+    record_id: str,
+    payload: CommentRequest,
+    request: Request,
+) -> dict[str, Any]:
+    content = payload.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="评论内容不能为空")
+
+    fingerprint = recommendation_fingerprint(request)
+    author_name = parse_optional_text(payload.author_name) or "饭搭子"
+    author_avatar = parse_optional_text(payload.author_avatar) or "🍜"
+    now = now_iso()
+    comment_id = f"comment_{uuid.uuid4().hex}"
+
+    with get_connection() as connection:
+        record = connection.execute(
+            "SELECT id, is_active FROM uploaded_records WHERE id = ?",
+            (record_id,),
+        ).fetchone()
+        if record is None:
+            raise HTTPException(status_code=404, detail="推荐记录不存在")
+        if int(record["is_active"] or 0) == 0:
+            raise HTTPException(status_code=410, detail="该推荐已下架，无法评论")
+        connection.execute(
+            """
+            INSERT INTO recommendation_comments(
+                id, recommendation_id, author_client_id, author_name,
+                author_avatar, content, created_at, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                comment_id,
+                record_id,
+                fingerprint,
+                author_name,
+                author_avatar,
+                content,
+                now,
+                now,
+            ),
+        )
+
+    return {
+        "success": True,
+        "message": "ok",
+        "data": {
+            "id": comment_id,
+            "recommendation_id": record_id,
+            "author_name": author_name,
+            "author_avatar": author_avatar,
+            "content": content,
+            "created_at": now,
+            "is_mine": True,
+        },
+    }
+
+
+@app.post("/v1/recommendations/{record_id}/visibility")
+def set_recommendation_visibility(
+    record_id: str,
+    payload: VisibilityRequest,
+    request: Request,
+) -> dict[str, Any]:
+    fingerprint = recommendation_fingerprint(request)
+    with get_connection() as connection:
+        record = connection.execute(
+            "SELECT id, owner_client_id FROM uploaded_records WHERE id = ?",
+            (record_id,),
+        ).fetchone()
+        if record is None:
+            raise HTTPException(status_code=404, detail="推荐记录不存在")
+        if (record["owner_client_id"] or "") != fingerprint:
+            raise HTTPException(status_code=403, detail="只能修改自己上传的记录")
+        connection.execute(
+            "UPDATE uploaded_records SET is_active = ?, updated_remote_at = ? WHERE id = ?",
+            (1 if payload.active else 0, now_iso(), record_id),
+        )
+
+    return {
+        "success": True,
+        "message": "ok",
+        "data": {"record_id": record_id, "active": payload.active},
+    }
 
 
 @app.post("/v1/recommendations/{record_id}/vote")

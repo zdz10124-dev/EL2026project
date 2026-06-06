@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../models/recommendation_comment.dart';
 import '../models/recommendation_models.dart';
 import '../services/location_service.dart';
 import '../services/meal_repository.dart';
@@ -117,7 +118,7 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
                 )
               else if (_items.isEmpty)
                 const SectionCard(
-                  child: Text('当前筛选条件下还没有可用推荐。'),
+                  child: Text('当前没有符合条件的记录。可以尝试清空筛选条件，或者稍后再来看看。'),
                 )
               else ...[
                 ..._items.map(
@@ -170,14 +171,15 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
   }
 
   Future<void> _bootstrap() async {
-    if (_locationResult == null) {
-      await _resolveLocation();
+    _distanceBucket ??= await widget.repository.getSavedRecommendationDistanceBucket();
+    if (!mounted) {
+      return;
+    }
+    if (_distanceBucket != null && _locationResult == null) {
+      unawaited(_resolveLocation());
     }
     unawaited(_syncUploadsSilently());
-    await _loadRecommendations(
-      refresh: true,
-      showSpinner: _items.isEmpty,
-    );
+    await _loadRecommendations(refresh: true, showSpinner: _items.isEmpty);
   }
 
   Future<void> _handleRefreshButton() async {
@@ -198,7 +200,7 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
     try {
       await widget.repository.syncPublicRecords();
     } catch (_) {
-      // 静默忽略补传异常，避免阻塞用户浏览推荐。
+      // Ignore background sync failures in the recommendation feed.
     }
   }
 
@@ -278,7 +280,8 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
   }
 
   Future<void> _showDistanceSelector() async {
-    final result = await showModalBottomSheet<_SingleChoiceResult<RecommendationDistanceBucket>>(
+    final result =
+        await showModalBottomSheet<_SingleChoiceResult<RecommendationDistanceBucket>>(
       context: context,
       showDragHandle: true,
       builder: (context) => _SingleChoiceSelectorSheet<RecommendationDistanceBucket>(
@@ -292,11 +295,16 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
       return;
     }
     setState(() => _distanceBucket = result.value);
+    await widget.repository.saveRecommendationDistanceBucket(result.value);
+    if (result.value != null && _locationResult == null) {
+      await _resolveLocation();
+    }
     await _loadRecommendations(refresh: true);
   }
 
   Future<void> _showPriceSelector() async {
-    final selected = await showModalBottomSheet<List<RecommendationPriceBucket>>(
+    final selected =
+        await showModalBottomSheet<List<RecommendationPriceBucket>>(
       context: context,
       showDragHandle: true,
       builder: (context) => _MultiChoiceSelectorSheet<RecommendationPriceBucket>(
@@ -315,10 +323,12 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
 
   Widget _buildLocationBanner(BuildContext context) {
     final locationText = _locationResult == null
-        ? '正在获取推荐所需的当前位置...'
+        ? (_distanceBucket == null
+              ? '当前距离筛选为不限，不会强制获取定位。'
+              : '正在获取位置，用来辅助距离筛选...')
         : _locationResult!.message;
     final warning = !_canUseDistanceFilter && _distanceBucket != null
-        ? '未能获取可用定位，距离筛选已暂时忽略。'
+        ? '暂时拿不到可用定位，当前会忽略距离筛选。'
         : null;
 
     return SectionCard(
@@ -363,14 +373,11 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
       if (result.feedback.isHidden) {
         _removeItem(item.id);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('该推荐已达到下架阈值，现已永久下架')),
+          const SnackBar(content: Text('这条推荐已被系统下架。')),
         );
         return;
       }
       _replaceItem(item.copyWith(feedback: result.feedback));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(action == 'upvote' ? '已点赞' : '已点踩')),
-      );
     } catch (error) {
       if (!mounted) {
         return;
@@ -383,7 +390,6 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
   }
 
   Future<void> _handleReport(RecommendationItem item) async {
-    final wasReported = item.feedback.currentReported;
     final previousItem = item;
     final optimisticItem = item.copyWith(
       feedback: _applyReportOptimistically(item.feedback),
@@ -400,16 +406,11 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
       if (result.feedback.isHidden) {
         _removeItem(item.id);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('举报达到阈值，该推荐已永久下架')),
+          const SnackBar(content: Text('举报达到阈值，这条推荐已下架。')),
         );
         return;
       }
       _replaceItem(item.copyWith(feedback: result.feedback));
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
-        SnackBar(content: Text(wasReported ? '已取消举报' : '举报已提交')),
-      );
     } catch (error) {
       if (!mounted) {
         return;
@@ -429,7 +430,8 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
     });
     final cachedDetail = _detailCache[nextItem.id];
     if (cachedDetail != null) {
-      _detailCache[nextItem.id] = cachedDetail.copyWith(feedback: nextItem.feedback);
+      _detailCache[nextItem.id] =
+          cachedDetail.copyWith(feedback: nextItem.feedback);
     }
     _persistPageCache();
   }
@@ -472,13 +474,22 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
   RecommendationDetail? _detail;
   bool _loading = true;
   String? _errorText;
+  late final TextEditingController _commentController;
+  bool _submittingComment = false;
 
   @override
   void initState() {
     super.initState();
+    _commentController = TextEditingController();
     _detail = widget.initialDetail;
     _loading = _detail == null;
     unawaited(_loadDetail(showSpinner: _detail == null));
+  }
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
   }
 
   @override
@@ -548,12 +559,16 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
             const SizedBox(height: 8),
             Text('评分：${item.rating?.toStringAsFixed(1) ?? '未打分'}'),
             const SizedBox(height: 8),
-            Text(
-              '记录时间：${DateFormat('yyyy/MM/dd HH:mm').format(item.createdAt)}',
-            ),
+            Text('记录时间：${DateFormat('yyyy/MM/dd HH:mm').format(item.createdAt)}'),
             if (item.distanceMeters != null) ...[
               const SizedBox(height: 8),
               Text('距离你约：${RecommendationDetailPage.formatDistance(item.distanceMeters!)}'),
+            ],
+            if (item.uploaderName?.isNotEmpty == true) ...[
+              const SizedBox(height: 8),
+              Text(
+                '发布者：${item.uploaderAvatar ?? '🍜'} ${item.uploaderName}',
+              ),
             ],
             const SizedBox(height: 18),
             const Text('推荐理由'),
@@ -561,8 +576,12 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
             Text(
               item.reason?.isNotEmpty == true
                   ? item.reason!
-                  : '这道菜在当前筛选条件下更容易被系统推荐到这里。',
+                  : '这道菜在当前筛选条件下更容易被推荐到这里。',
             ),
+            const SizedBox(height: 18),
+            const Text('菜品描述'),
+            const SizedBox(height: 8),
+            Text(item.description?.trim().isNotEmpty == true ? item.description! : '发布者暂时没有补充描述。'),
             const SizedBox(height: 14),
             _RecommendationFeedbackBar(
               upvoteCount: item.feedback.upvoteCount,
@@ -574,9 +593,25 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
               onReport: _handleReport,
             ),
             const SizedBox(height: 18),
-            const Text('评价'),
+            const Text('评论'),
             const SizedBox(height: 8),
-            Text(item.comment?.trim().isNotEmpty == true ? item.comment! : '暂未填写'),
+            _CommentComposer(
+              controller: _commentController,
+              busy: _submittingComment,
+              onSubmit: _submitComment,
+            ),
+            const SizedBox(height: 12),
+            if (item.comments.isEmpty)
+              const SectionCard(
+                child: Text('还没有评论，写下第一条吧。'),
+              )
+            else
+              ...item.comments.map(
+                (comment) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _CommentCard(comment: comment),
+                ),
+              ),
             const SizedBox(height: 18),
             const Text('同菜品聚合统计'),
             const SizedBox(height: 8),
@@ -635,6 +670,40 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
     }
   }
 
+  Future<void> _submitComment() async {
+    final content = _commentController.text.trim();
+    if (content.isEmpty || _submittingComment) {
+      return;
+    }
+    setState(() => _submittingComment = true);
+    try {
+      final comment = await widget.repository.createRecommendationComment(
+        recommendationId: widget.itemId,
+        content: content,
+      );
+      if (!mounted) {
+        return;
+      }
+      _commentController.clear();
+      final next = (_detail ?? widget.initialDetail)!.copyWith(
+        comments: [comment, ...(_detail?.comments ?? const [])],
+      );
+      setState(() {
+        _detail = next;
+        _submittingComment = false;
+      });
+      _NetworkRecommendationPageState._detailCache[widget.itemId] = next;
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _submittingComment = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('评论失败：$error')),
+      );
+    }
+  }
+
   Future<void> _handleVote(String action) async {
     final current = _detail;
     if (current == null) {
@@ -656,7 +725,7 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
       }
       if (result.feedback.isHidden) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('该推荐已达到下架阈值，现已永久下架')),
+          const SnackBar(content: Text('这条推荐已被系统下架。')),
         );
         Navigator.of(context).pop();
         return;
@@ -664,9 +733,6 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
       final next = previous.copyWith(feedback: result.feedback);
       setState(() => _detail = next);
       _NetworkRecommendationPageState._detailCache[widget.itemId] = next;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(action == 'upvote' ? '已点赞' : '已点踩')),
-      );
     } catch (error) {
       if (!mounted) {
         return;
@@ -683,7 +749,6 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
     if (current == null) {
       return;
     }
-    final wasReported = current.feedback.currentReported;
     final previous = current;
     setState(() {
       _detail = current.copyWith(
@@ -699,7 +764,7 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
       }
       if (result.feedback.isHidden) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('举报达到阈值，该推荐已永久下架')),
+          const SnackBar(content: Text('举报达到阈值，这条推荐已下架。')),
         );
         Navigator.of(context).pop();
         return;
@@ -707,11 +772,6 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
       final next = previous.copyWith(feedback: result.feedback);
       setState(() => _detail = next);
       _NetworkRecommendationPageState._detailCache[widget.itemId] = next;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
-        SnackBar(content: Text(wasReported ? '已取消举报' : '举报已提交')),
-      );
     } catch (error) {
       if (!mounted) {
         return;
@@ -759,27 +819,33 @@ class _RecommendationListCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(item.location),
             const SizedBox(height: 6),
-            Text(
-              '价格 ${item.price.toStringAsFixed(1)} · 评分 ${item.rating.toStringAsFixed(1)}',
-            ),
+            Text('价格 ${item.price.toStringAsFixed(1)} · 评分 ${item.rating.toStringAsFixed(1)}'),
             if (item.distanceMeters != null) ...[
               const SizedBox(height: 6),
               Text(
                 '距离你约 ${RecommendationDetailPage.formatDistance(item.distanceMeters!)}',
               ),
             ],
+            if (item.uploaderName?.isNotEmpty == true) ...[
+              const SizedBox(height: 6),
+              Text('发布者 ${item.uploaderAvatar ?? '🍜'} ${item.uploaderName}'),
+            ],
             const SizedBox(height: 10),
-            Text(
-              item.reason.isNotEmpty
-                  ? item.reason
-                  : '同菜品下高分、较近且更热门的记录更容易被推荐到这里。',
-            ),
+            Text(item.summaryDescription),
             const SizedBox(height: 10),
             Text(
               '公开记录 ${item.aggregate.uploadCount} · 均分 ${item.aggregate.averageRating?.toStringAsFixed(1) ?? '暂无'} · '
               '均价 ${item.aggregate.averagePrice?.toStringAsFixed(1) ?? '暂无'} · '
               '最近 ${DateFormat('MM/dd HH:mm').format(item.aggregate.latestRecordedAt)}',
               style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '点击查看详情',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
             ),
             const SizedBox(height: 10),
             _RecommendationFeedbackBar(
@@ -793,6 +859,86 @@ class _RecommendationListCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CommentComposer extends StatelessWidget {
+  const _CommentComposer({
+    required this.controller,
+    required this.busy,
+    required this.onSubmit,
+  });
+
+  final TextEditingController controller;
+  final bool busy;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: controller,
+            minLines: 1,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              hintText: '写下你的看法...',
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        FilledButton(
+          onPressed: busy ? null : onSubmit,
+          child: Text(busy ? '发送中' : '评论'),
+        ),
+      ],
+    );
+  }
+}
+
+class _CommentCard extends StatelessWidget {
+  const _CommentCard({required this.comment});
+
+  final RecommendationComment comment;
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                child: Text(comment.authorAvatar),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      comment.isMine
+                          ? '${comment.authorName}（我）'
+                          : comment.authorName,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    Text(
+                      DateFormat('MM/dd HH:mm').format(comment.createdAt),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(comment.content),
+        ],
       ),
     );
   }
@@ -879,9 +1025,10 @@ class _DetailPlaceholderTitle extends StatelessWidget {
       alignment: Alignment.center,
       child: Text(
         title,
-        style: Theme.of(
-          context,
-        ).textTheme.headlineMedium?.copyWith(color: Colors.white),
+        style: Theme.of(context)
+            .textTheme
+            .headlineMedium
+            ?.copyWith(color: Colors.white),
         textAlign: TextAlign.center,
       ),
     );
@@ -964,9 +1111,8 @@ class _SingleChoiceSelectorSheetState<T>
             Align(
               alignment: Alignment.centerRight,
               child: FilledButton(
-                onPressed: () => Navigator.of(
-                  context,
-                ).pop(_SingleChoiceResult<T>(value: _selected)),
+                onPressed: () => Navigator.of(context)
+                    .pop(_SingleChoiceResult<T>(value: _selected)),
                 child: const Text('完成'),
               ),
             ),

@@ -1,5 +1,42 @@
-// 对外接口：
-// - MealRecord
+enum LocalRecommendationStatus {
+  localOnly,
+  pendingUpload,
+  uploaded,
+  uploadFailed,
+  unlisted,
+}
+
+extension LocalRecommendationStatusX on LocalRecommendationStatus {
+  String get dbValue {
+    switch (this) {
+      case LocalRecommendationStatus.localOnly:
+        return 'local_only';
+      case LocalRecommendationStatus.pendingUpload:
+        return 'pending_upload';
+      case LocalRecommendationStatus.uploaded:
+        return 'uploaded';
+      case LocalRecommendationStatus.uploadFailed:
+        return 'upload_failed';
+      case LocalRecommendationStatus.unlisted:
+        return 'unlisted';
+    }
+  }
+
+  static LocalRecommendationStatus fromDb(String? value) {
+    switch (value) {
+      case 'pending_upload':
+        return LocalRecommendationStatus.pendingUpload;
+      case 'uploaded':
+        return LocalRecommendationStatus.uploaded;
+      case 'upload_failed':
+        return LocalRecommendationStatus.uploadFailed;
+      case 'unlisted':
+        return LocalRecommendationStatus.unlisted;
+      default:
+        return LocalRecommendationStatus.localOnly;
+    }
+  }
+}
 
 class MealRecord {
   MealRecord({
@@ -15,6 +52,9 @@ class MealRecord {
     required this.ratingLabel,
     required this.mainDish,
     this.comment,
+    this.remoteRecommendationId,
+    this.autoUploadEnabled = true,
+    this.recommendationStatus = LocalRecommendationStatus.localOnly,
     this.sideDish,
     this.drink,
     this.snack,
@@ -28,55 +68,29 @@ class MealRecord {
     this.cuisine,
   });
 
-  /// 本地数据库自增主键。
   final int? id;
-
-  /// 上传去重使用的客户端稳定标识。
   final String clientRecordId;
-
-  /// 用户实际记录用餐时间。
   final DateTime createdAt;
-
-  /// 最近一次本地修改时间，用于判断是否需要重新上传。
   final DateTime updatedAt;
-
-  /// 本地图片绝对路径。
   final String imagePath;
-
-  /// 用户填写的菜名。
   final String dishName;
-
-  /// 用户填写的地点文本。
   final String location;
-
-  /// 用户填写的价格。
   final double? price;
-
-  /// 0-10 分制评分。
   final double? ratingScore;
-
-  /// 评分文本，用于现有统计页展示。
   final String ratingLabel;
-
-  /// 当前版本的主菜归一字段。
   final String mainDish;
-
-  /// 预留的用户评价文本。
   final String? comment;
-
+  final String? remoteRecommendationId;
+  final bool autoUploadEnabled;
+  final LocalRecommendationStatus recommendationStatus;
   final String? sideDish;
   final String? drink;
   final String? snack;
   final String? province;
   final String? city;
   final String? district;
-
-  /// 记录地点纬度，可为空。
   final double? latitude;
-
-  /// 记录地点经度，可为空。
   final double? longitude;
-
   final String? spiceLevel;
   final String? ingredients;
   final String? cuisine;
@@ -94,6 +108,9 @@ class MealRecord {
     String? ratingLabel,
     String? mainDish,
     String? comment,
+    String? remoteRecommendationId,
+    bool? autoUploadEnabled,
+    LocalRecommendationStatus? recommendationStatus,
     String? sideDish,
     String? drink,
     String? snack,
@@ -119,6 +136,10 @@ class MealRecord {
       ratingLabel: ratingLabel ?? this.ratingLabel,
       mainDish: mainDish ?? this.mainDish,
       comment: comment ?? this.comment,
+      remoteRecommendationId:
+          remoteRecommendationId ?? this.remoteRecommendationId,
+      autoUploadEnabled: autoUploadEnabled ?? this.autoUploadEnabled,
+      recommendationStatus: recommendationStatus ?? this.recommendationStatus,
       sideDish: sideDish ?? this.sideDish,
       drink: drink ?? this.drink,
       snack: snack ?? this.snack,
@@ -149,6 +170,9 @@ class MealRecord {
       'location': location,
       'price': price,
       'comment': comment,
+      'remote_recommendation_id': remoteRecommendationId,
+      'auto_upload_enabled': autoUploadEnabled ? 1 : 0,
+      'recommendation_status': recommendationStatus.dbValue,
       'province': province,
       'city': city,
       'district': district,
@@ -187,6 +211,11 @@ class MealRecord {
       ratingLabel: map['rating_label'] as String? ?? '未打分',
       mainDish: map['main_dish'] as String,
       comment: map['comment'] as String?,
+      remoteRecommendationId: map['remote_recommendation_id'] as String?,
+      autoUploadEnabled: (map['auto_upload_enabled'] as num?)?.toInt() != 0,
+      recommendationStatus: LocalRecommendationStatusX.fromDb(
+        map['recommendation_status'] as String?,
+      ),
       sideDish: map['side_dish'] as String?,
       drink: map['drink'] as String?,
       snack: map['snack'] as String?,

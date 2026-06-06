@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models/meal_record.dart';
 import '../models/style_presets.dart';
 import '../models/ui_config.dart';
+import '../models/user_profile.dart';
 import '../services/llm_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/rating_stars.dart';
@@ -46,6 +47,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _nutritionReminder = false;
   bool _publicRecords = false;
   bool _loadingPublicRecords = true;
+  UserProfile _profile = const UserProfile(
+    displayName: UserProfile.defaultName,
+    avatarEmoji: UserProfile.defaultAvatar,
+  );
   late AppStyleId _appStyleId;
   late DiaryStyleId _diaryStyleId;
 
@@ -80,6 +85,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _SettingsGroup(
               title: '账号与数据',
               children: [
+                _SettingsActionTile(
+                  icon: Icons.account_circle_outlined,
+                  title: '昵称与头像',
+                  subtitle: '${_profile.avatarEmoji} ${_profile.displayName}',
+                  onTap: _openProfileEditor,
+                ),
                 _SettingsActionTile(
                   icon: Icons.storage_rounded,
                   title: '本地数据管理',
@@ -146,8 +157,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 _SettingsSwitchTile(
                   icon: Icons.public_outlined,
-                  title: '是否将自己的菜品记录公开',
-                  subtitle: '开启后，记录未来可能出现在联网推荐里。',
+                  title: '是否自动上传记录',
+                  subtitle: '开启后，新记录会尝试同步到联网推荐；关闭后仅本地保存。',
                   value: _publicRecords,
                   onChanged: _loadingPublicRecords
                       ? null
@@ -251,10 +262,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     final publicRecords = await widget.repository.getPublicRecordsEnabled();
+    final profile = await widget.repository.getUserProfile();
     if (!mounted) return;
     setState(() {
       _publicRecords = publicRecords;
       _loadingPublicRecords = false;
+      _profile = profile;
     });
   }
 
@@ -295,7 +308,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() => _loadingPublicRecords = false);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(value ? '已开启公开记录，并开始尝试同步。' : '已关闭公开记录。')),
+      SnackBar(
+        content: Text(value ? '已开启自动上传，并开始尝试同步。' : '已关闭自动上传，新记录将仅保存在本地。'),
+      ),
+    );
+  }
+
+  Future<void> _openProfileEditor() async {
+    final result = await Navigator.of(context).push<UserProfile>(
+      MaterialPageRoute(
+        builder: (_) => _ProfileEditorPage(initialProfile: _profile),
+      ),
+    );
+    if (result == null) {
+      return;
+    }
+    await widget.repository.saveUserProfile(result);
+    if (!mounted) {
+      return;
+    }
+    setState(() => _profile = result);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('昵称和头像已更新')),
     );
   }
 
@@ -824,6 +858,113 @@ class LocalDataManagementPage extends StatefulWidget {
 
   @override
   State<LocalDataManagementPage> createState() => _LocalDataManagementPageState();
+}
+
+class _ProfileEditorPage extends StatefulWidget {
+  const _ProfileEditorPage({required this.initialProfile});
+
+  final UserProfile initialProfile;
+
+  @override
+  State<_ProfileEditorPage> createState() => _ProfileEditorPageState();
+}
+
+class _ProfileEditorPageState extends State<_ProfileEditorPage> {
+  static const List<String> _avatarOptions = <String>[
+    '🍜',
+    '🍚',
+    '🍲',
+    '🍣',
+    '🍔',
+    '🥗',
+    '🍎',
+    '☕',
+  ];
+
+  late final TextEditingController _nameController;
+  late String _selectedAvatar;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(
+      text: widget.initialProfile.displayName,
+    );
+    _selectedAvatar = widget.initialProfile.avatarEmoji;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: const Text('昵称与头像')),
+      body: ThemedPageBackground(
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            SectionCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: _nameController,
+                    maxLength: 16,
+                    decoration: const InputDecoration(
+                      labelText: '昵称',
+                      hintText: '给自己起个容易认出来的名字',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '头像',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: _avatarOptions.map((avatar) {
+                      final selected = avatar == _selectedAvatar;
+                      return ChoiceChip(
+                        label: Text(avatar, style: const TextStyle(fontSize: 18)),
+                        selected: selected,
+                        onSelected: (_) {
+                          setState(() => _selectedAvatar = avatar);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: _save,
+              child: const Text('保存资料'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _save() {
+    final name = _nameController.text.trim();
+    Navigator.of(context).pop(
+      UserProfile(
+        displayName: name.isEmpty ? UserProfile.defaultName : name,
+        avatarEmoji: _selectedAvatar.trim().isEmpty
+            ? UserProfile.defaultAvatar
+            : _selectedAvatar,
+      ),
+    );
+  }
 }
 
 class _LocalDataManagementPageState extends State<LocalDataManagementPage> {

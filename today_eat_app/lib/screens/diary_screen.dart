@@ -84,10 +84,10 @@ class _DiaryScreenState extends State<DiaryScreen> {
         _diary = diary;
         _generating = false;
       });
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
       setState(() => _generating = false);
-      _showSnackBar('生成失败：$e');
+      _showSnackBar(_friendlyAiError(error));
     }
   }
 
@@ -110,6 +110,28 @@ class _DiaryScreenState extends State<DiaryScreen> {
         ],
       ),
     );
+  }
+
+  String _friendlyAiError(Object error) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('未配置') || text.contains('not configured')) {
+      return 'AI 还没有配置好，请先到设置页完成配置。';
+    }
+    if (text.contains('401') || text.contains('403') || text.contains('invalid')) {
+      return 'AI 配置似乎无效，请检查密钥、模型或服务端配置。';
+    }
+    if (text.contains('timeout') || text.contains('timed out')) {
+      return 'AI 请求超时了，可以稍后再试一次。';
+    }
+    if (text.contains('network') ||
+        text.contains('socket') ||
+        text.contains('failed host lookup')) {
+      return '网络似乎不稳定，这次日记生成没有成功。';
+    }
+    if (text.contains('429') || text.contains('quota')) {
+      return 'AI 服务当前额度不足或请求太频繁，请稍后再试。';
+    }
+    return 'AI 生成失败了，请稍后重试。';
   }
 
   @override
