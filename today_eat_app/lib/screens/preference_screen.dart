@@ -93,11 +93,11 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
         _loading = false;
         _isCached = false;
       });
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('分析失败：$e')),
+        SnackBar(content: Text(_friendlyAiError(error))),
       );
     }
   }
@@ -264,6 +264,28 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
         ),
       ),
     );
+  }
+
+  String _friendlyAiError(Object error) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('未配置') || text.contains('not configured')) {
+      return 'AI 还没有配置好，请先到设置页完成配置。';
+    }
+    if (text.contains('401') || text.contains('403') || text.contains('invalid')) {
+      return 'AI 配置似乎无效，请检查密钥、模型或服务端配置。';
+    }
+    if (text.contains('timeout') || text.contains('timed out')) {
+      return 'AI 请求超时了，可以稍后再试一次。';
+    }
+    if (text.contains('network') ||
+        text.contains('socket') ||
+        text.contains('failed host lookup')) {
+      return '网络似乎不稳定，这次偏好分析没有成功。';
+    }
+    if (text.contains('429') || text.contains('quota')) {
+      return 'AI 服务当前额度不足或请求太频繁，请稍后再试。';
+    }
+    return 'AI 分析失败了，请稍后重试。';
   }
 }
 

@@ -42,8 +42,10 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/meal_draft.dart';
 import '../models/meal_record.dart';
+import '../models/recommendation_comment.dart';
 import '../models/recommendation_models.dart';
 import '../models/recommendation_upload_task.dart';
+import '../models/user_profile.dart';
 import 'app_settings_service.dart';
 import 'database_service.dart';
 import 'recommendation_api_service.dart';
@@ -128,12 +130,13 @@ class MealRepository {
 
   MealDraft? _draft;
   bool _shouldUseDraftOnNextOpen = false;
-  bool _publicRecordsEnabled = false;
+  bool _autoUploadRecordsEnabled = true;
 
   Stream<List<MealRecord>> get recordsStream => _recordsController.stream;
 
   Future<void> initialize() async {
-    _publicRecordsEnabled = await _appSettingsService.getPublicRecordsEnabled();
+    _autoUploadRecordsEnabled =
+        await _appSettingsService.getAutoUploadRecordsEnabled();
     await refreshRecords();
   }
 
@@ -199,6 +202,7 @@ class MealRepository {
     String? district,
     double? latitude,
     double? longitude,
+    bool? autoUploadEnabled,
   }) async {
     final now = DateTime.now();
     final savedImagePath = await _copyImageToAppDir(sourceImagePath);
@@ -224,6 +228,7 @@ class MealRepository {
       district: district,
       latitude: latitude,
       longitude: longitude,
+      autoUploadEnabled: autoUploadEnabled ?? _autoUploadRecordsEnabled,
     );
 
     final recordId = await _databaseService.insertRecord(record);
@@ -231,6 +236,10 @@ class MealRepository {
     await _databaseService.ensureUploadTasksForRecords([savedRecord]);
     clearDraft();
     await refreshRecords();
+    if (savedRecord.autoUploadEnabled) {
+      await syncPublicRecords();
+      await refreshRecords();
+    }
   }
 
   Future<void> updateRecord({
@@ -245,6 +254,7 @@ class MealRepository {
     String? district,
     double? latitude,
     double? longitude,
+    bool? autoUploadEnabled,
   }) async {
     final updated = buildRecord(
       id: original.id,
@@ -262,12 +272,23 @@ class MealRepository {
       district: district ?? original.district,
       latitude: latitude ?? original.latitude,
       longitude: longitude ?? original.longitude,
+      autoUploadEnabled: autoUploadEnabled ?? original.autoUploadEnabled,
+      remoteRecommendationId: original.remoteRecommendationId,
+      recommendationStatus: (autoUploadEnabled ?? original.autoUploadEnabled)
+          ? LocalRecommendationStatus.pendingUpload
+          : LocalRecommendationStatus.localOnly,
     );
     await _databaseService.updateRecord(updated);
-    if (updated.id != null) {
+    if (updated.id != null && updated.autoUploadEnabled) {
       await _databaseService.ensureUploadTasksForRecords([updated]);
+    } else if (updated.id != null) {
+      await _databaseService.deleteUploadTaskByRecordId(updated.id!);
     }
     await refreshRecords();
+    if (updated.autoUploadEnabled) {
+      await syncPublicRecords();
+      await refreshRecords();
+    }
   }
 
   MealRecord buildRecord({
@@ -293,6 +314,9 @@ class MealRepository {
     String? district,
     double? latitude,
     double? longitude,
+    String? remoteRecommendationId,
+    bool autoUploadEnabled = true,
+    LocalRecommendationStatus? recommendationStatus,
   }) {
     final dishName = _fallbackText(dishNameInput);
     final location = _fallbackText(locationInput);
@@ -319,6 +343,13 @@ class MealRepository {
       ingredients: aiIngredients,
       cuisine: aiCuisine,
       comment: _nullableText(commentInput),
+      remoteRecommendationId: remoteRecommendationId,
+      autoUploadEnabled: autoUploadEnabled,
+      recommendationStatus:
+          recommendationStatus ??
+          (autoUploadEnabled
+              ? LocalRecommendationStatus.pendingUpload
+              : LocalRecommendationStatus.localOnly),
       province: _nullableText(province),
       city: _nullableText(city),
       district: _nullableText(district),
@@ -328,6 +359,13 @@ class MealRepository {
   }
 
   Future<void> deleteRecord(MealRecord record) async {
+    if (record.remoteRecommendationId?.isNotEmpty == true) {
+      try {
+        await setRecommendationVisibility(record, active: false);
+      } catch (_) {
+        // Deleting local content should still succeed even if remote unlisting fails.
+      }
+    }
     if (record.id != null) {
       await _databaseService.deleteRecord(record.id!);
       await _databaseService.deleteUploadTaskByRecordId(record.id!);
@@ -346,17 +384,40 @@ class MealRepository {
   }
 
   Future<bool> getPublicRecordsEnabled() async {
-    _publicRecordsEnabled = await _appSettingsService.getPublicRecordsEnabled();
-    return _publicRecordsEnabled;
+    _autoUploadRecordsEnabled =
+        await _appSettingsService.getAutoUploadRecordsEnabled();
+    return _autoUploadRecordsEnabled;
   }
 
   Future<void> setPublicRecordsEnabled(bool value) async {
-    _publicRecordsEnabled = value;
-    await _appSettingsService.setPublicRecordsEnabled(value);
+    _autoUploadRecordsEnabled = value;
+    await _appSettingsService.setAutoUploadRecordsEnabled(value);
+    if (value) {
+      await syncPublicRecords();
+      await refreshRecords();
+    }
+  }
+
+  Future<UserProfile> getUserProfile() async {
+    return _appSettingsService.getUserProfile();
+  }
+
+  Future<void> saveUserProfile(UserProfile profile) async {
+    await _appSettingsService.setUserProfile(profile);
+  }
+
+  Future<RecommendationDistanceBucket?> getSavedRecommendationDistanceBucket() {
+    return _appSettingsService.getRecommendationDistanceBucket();
+  }
+
+  Future<void> saveRecommendationDistanceBucket(
+    RecommendationDistanceBucket? bucket,
+  ) {
+    return _appSettingsService.setRecommendationDistanceBucket(bucket);
   }
 
   Future<RecommendationSyncSummary> syncPublicRecords() async {
-    if (!_publicRecordsEnabled) {
+    if (!_autoUploadRecordsEnabled) {
       return const RecommendationSyncSummary(
         successCount: 0,
         failedCount: 0,
@@ -381,14 +442,25 @@ class MealRepository {
 
     for (final task in tasks) {
       final record = await _databaseService.fetchRecordById(task.recordId);
-      if (record == null) {
+      if (record == null || !record.autoUploadEnabled) {
         continue;
       }
       try {
-        await _recommendationApiService.uploadRecord(record);
+        final profile = await getUserProfile();
+        final clientId = await _appSettingsService.getRecommendationClientId();
+        final result = await _recommendationApiService.uploadRecord(
+          record: record,
+          clientId: clientId,
+          profile: profile,
+        );
         await _databaseService.markUploadTaskSynced(
           clientRecordId: record.clientRecordId,
           recordUpdatedAt: record.updatedAt,
+        );
+        await _databaseService.updateRecommendationSyncState(
+          recordId: record.id!,
+          status: LocalRecommendationStatus.uploaded,
+          remoteRecommendationId: result.remoteId,
         );
         successCount++;
       } catch (error) {
@@ -401,6 +473,10 @@ class MealRepository {
               error is RecommendationApiException && !error.shouldRetry
               ? RecommendationUploadTaskStatus.invalid
               : RecommendationUploadTaskStatus.failed,
+        );
+        await _databaseService.updateRecommendationSyncState(
+          recordId: record.id!,
+          status: LocalRecommendationStatus.uploadFailed,
         );
       }
     }
@@ -423,6 +499,88 @@ class MealRepository {
   Future<RecommendationDetail> fetchRecommendationDetail(String id) async {
     final clientId = await _appSettingsService.getRecommendationClientId();
     return _recommendationApiService.fetchRecommendationDetail(id, clientId);
+  }
+
+  Future<RecommendationComment> createRecommendationComment({
+    required String recommendationId,
+    required String content,
+  }) async {
+    final clientId = await _appSettingsService.getRecommendationClientId();
+    final profile = await getUserProfile();
+    return _recommendationApiService.createComment(
+      recommendationId: recommendationId,
+      content: content,
+      clientId: clientId,
+      profile: profile,
+    );
+  }
+
+  Future<void> setRecordAutoUploadEnabled(
+    MealRecord record,
+    bool enabled,
+  ) async {
+    if (record.id == null) {
+      return;
+    }
+    final updated = record.copyWith(
+      autoUploadEnabled: enabled,
+      recommendationStatus: enabled
+          ? LocalRecommendationStatus.pendingUpload
+          : (record.remoteRecommendationId?.isNotEmpty == true
+              ? LocalRecommendationStatus.unlisted
+              : LocalRecommendationStatus.localOnly),
+    );
+    await _databaseService.updateRecord(updated);
+    if (enabled) {
+      await _databaseService.ensureUploadTasksForRecords([updated]);
+    } else {
+      await _databaseService.deleteUploadTaskByRecordId(record.id!);
+    }
+    await refreshRecords();
+    if (enabled) {
+      unawaited(_syncRecordUploadsInBackground());
+    } else if (record.remoteRecommendationId?.isNotEmpty == true) {
+      unawaited(
+        _pushRecommendationVisibilityInBackground(
+          updated,
+          active: false,
+        ),
+      );
+    } else {
+      await _databaseService.updateRecommendationSyncState(
+        recordId: record.id!,
+        status: LocalRecommendationStatus.localOnly,
+        autoUploadEnabled: false,
+        remoteRecommendationId: null,
+      );
+      await refreshRecords();
+    }
+  }
+
+  Future<void> setRecommendationVisibility(
+    MealRecord record, {
+    required bool active,
+  }) async {
+    if (record.id == null || record.remoteRecommendationId?.isNotEmpty != true) {
+      return;
+    }
+    await _databaseService.updateRecommendationSyncState(
+      recordId: record.id!,
+      status: active
+          ? LocalRecommendationStatus.uploaded
+          : LocalRecommendationStatus.unlisted,
+      autoUploadEnabled: record.autoUploadEnabled,
+      remoteRecommendationId: record.remoteRecommendationId,
+    );
+    await refreshRecords();
+    final updated = record.copyWith(
+      recommendationStatus: active
+          ? LocalRecommendationStatus.uploaded
+          : LocalRecommendationStatus.unlisted,
+    );
+    unawaited(
+      _pushRecommendationVisibilityInBackground(updated, active: active),
+    );
   }
 
   Future<RecommendationModerationResult> submitRecommendationVote({
@@ -720,7 +878,23 @@ class MealRepository {
   }
 
   String _normalizeDishKey(String source) {
-    return source.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+    var value = source.trim().toLowerCase();
+    value = value
+        .replaceAll('西红柿', '番茄')
+        .replaceAll('蕃茄', '番茄')
+        .replaceAll('马铃薯', '土豆')
+        .replaceAll('洋芋', '土豆')
+        .replaceAll('薯仔', '土豆')
+        .replaceAll('鸡蛋', '蛋')
+        .replaceAll('米饭', '饭')
+        .replaceAll('白米饭', '饭');
+    value = value.replaceAll(RegExp(r'[\s,，.。!！?？\-_/\\()（）【】\[\]]+'), '');
+    for (final suffix in const ['套餐', '盖饭', '便当', '小份', '大份', '中份', '微辣', '中辣', '特辣']) {
+      if (value.endsWith(suffix) && value.length > suffix.length + 1) {
+        value = value.substring(0, value.length - suffix.length);
+      }
+    }
+    return value;
   }
 
   String _generateClientRecordId(DateTime time) {
@@ -731,5 +905,30 @@ class MealRepository {
   DateTime _journalDayStart(DateTime time) {
     final shifted = time.subtract(const Duration(hours: 4));
     return DateTime(shifted.year, shifted.month, shifted.day, 4);
+  }
+
+  Future<void> _syncRecordUploadsInBackground() async {
+    try {
+      await syncPublicRecords();
+      await refreshRecords();
+    } catch (_) {
+      await refreshRecords();
+    }
+  }
+
+  Future<void> _pushRecommendationVisibilityInBackground(
+    MealRecord record, {
+    required bool active,
+  }) async {
+    try {
+      final clientId = await _appSettingsService.getRecommendationClientId();
+      await _recommendationApiService.setRecommendationVisibility(
+        recommendationId: record.remoteRecommendationId!,
+        active: active,
+        clientId: clientId,
+      );
+    } catch (_) {
+      // Keep the optimistic local state and avoid blocking the UI.
+    }
   }
 }

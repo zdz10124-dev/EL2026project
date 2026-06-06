@@ -1,8 +1,3 @@
-// 对外接口：
-// - RecommendationApiService.searchRecommendations
-// - RecommendationApiService.fetchRecommendationDetail
-// - RecommendationApiService.uploadRecord
-
 import 'dart:convert';
 import 'dart:io';
 
@@ -10,7 +5,9 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
 import '../models/meal_record.dart';
+import '../models/recommendation_comment.dart';
 import '../models/recommendation_models.dart';
+import '../models/user_profile.dart';
 import 'upload_image_compressor.dart';
 
 class RecommendationApiException implements Exception {
@@ -39,16 +36,25 @@ class RecommendationModerationResult {
   final RecommendationFeedbackSummary feedback;
 }
 
+class RecommendationVisibilityResult {
+  const RecommendationVisibilityResult({
+    required this.recordId,
+    required this.active,
+  });
+
+  final String recordId;
+  final bool active;
+}
+
 class RecommendationApiService {
   RecommendationApiService({http.Client? client, Uri? baseUri})
-    : _client = client ?? http.Client(),
-      _baseUri = baseUri ?? Uri.parse('https://api.whateattoday.xyz');
+      : _client = client ?? http.Client(),
+        _baseUri = baseUri ?? Uri.parse('https://api.whateattoday.xyz');
 
   final http.Client _client;
   final Uri _baseUri;
   final UploadImageCompressor _imageCompressor = UploadImageCompressor();
 
-  /// [对外接口] 请求联网推荐列表。
   Future<RecommendationSearchPage> searchRecommendations(
     RecommendationQuery query,
     String clientId,
@@ -64,7 +70,7 @@ class RecommendationApiService {
         )
         .timeout(const Duration(seconds: 12));
 
-    final body = _decodeJson(response.body);
+    final body = _decodeJsonBytes(response.bodyBytes);
     _throwIfFailed(response.statusCode, body);
 
     return RecommendationSearchPage.fromMap(
@@ -72,7 +78,6 @@ class RecommendationApiService {
     );
   }
 
-  /// [对外接口] 请求联网推荐详情。
   Future<RecommendationDetail> fetchRecommendationDetail(
     String id,
     String clientId,
@@ -84,7 +89,7 @@ class RecommendationApiService {
         )
         .timeout(const Duration(seconds: 12));
 
-    final body = _decodeJson(response.body);
+    final body = _decodeJsonBytes(response.bodyBytes);
     _throwIfFailed(response.statusCode, body);
 
     return RecommendationDetail.fromMap(
@@ -92,12 +97,16 @@ class RecommendationApiService {
     );
   }
 
-  /// [对外接口] 上传一条本地记录到联网推荐服务。
-  Future<RecommendationUploadResult> uploadRecord(MealRecord record) async {
+  Future<RecommendationUploadResult> uploadRecord({
+    required MealRecord record,
+    required String clientId,
+    required UserProfile profile,
+  }) async {
     final request = http.MultipartRequest(
       'POST',
       _baseUri.resolve('/v1/recommendations/upload-record'),
     );
+    request.headers['x-client-id'] = clientId;
     request.fields.addAll({
       'client_record_id': record.clientRecordId,
       'created_at': record.createdAt.toIso8601String(),
@@ -112,6 +121,8 @@ class RecommendationApiService {
       'district': record.district ?? '',
       'latitude': record.latitude?.toString() ?? '',
       'longitude': record.longitude?.toString() ?? '',
+      'uploader_name': profile.displayName,
+      'uploader_avatar': profile.avatarEmoji,
     });
 
     final imageFile = File(record.imagePath);
@@ -132,7 +143,7 @@ class RecommendationApiService {
 
     final streamed = await request.send().timeout(const Duration(seconds: 25));
     final response = await http.Response.fromStream(streamed);
-    final body = _decodeJson(response.body);
+    final body = _decodeJsonBytes(response.bodyBytes);
     _throwIfFailed(response.statusCode, body);
 
     final data = (body['data'] as Map<String, dynamic>? ?? const {})
@@ -141,6 +152,60 @@ class RecommendationApiService {
       remoteId: data['remote_id'] as String? ?? '',
       updatedAt: DateTime.tryParse(data['updated_at'] as String? ?? '') ??
           DateTime.now(),
+    );
+  }
+
+  Future<RecommendationVisibilityResult> setRecommendationVisibility({
+    required String recommendationId,
+    required bool active,
+    required String clientId,
+  }) async {
+    final response = await _client
+        .post(
+          _baseUri.resolve('/v1/recommendations/$recommendationId/visibility'),
+          headers: {
+            'content-type': 'application/json; charset=utf-8',
+            'x-client-id': clientId,
+          },
+          body: jsonEncode({'active': active}),
+        )
+        .timeout(const Duration(seconds: 12));
+
+    final body = _decodeJsonBytes(response.bodyBytes);
+    _throwIfFailed(response.statusCode, body);
+    final data = (body['data'] as Map<String, dynamic>? ?? const {})
+        .cast<String, Object?>();
+    return RecommendationVisibilityResult(
+      recordId: data['record_id'] as String? ?? recommendationId,
+      active: data['active'] == true,
+    );
+  }
+
+  Future<RecommendationComment> createComment({
+    required String recommendationId,
+    required String content,
+    required String clientId,
+    required UserProfile profile,
+  }) async {
+    final response = await _client
+        .post(
+          _baseUri.resolve('/v1/recommendations/$recommendationId/comments'),
+          headers: {
+            'content-type': 'application/json; charset=utf-8',
+            'x-client-id': clientId,
+          },
+          body: jsonEncode({
+            'content': content,
+            'author_name': profile.displayName,
+            'author_avatar': profile.avatarEmoji,
+          }),
+        )
+        .timeout(const Duration(seconds: 12));
+
+    final body = _decodeJsonBytes(response.bodyBytes);
+    _throwIfFailed(response.statusCode, body);
+    return RecommendationComment.fromMap(
+      (body['data'] as Map<String, dynamic>? ?? const {}).cast<String, Object?>(),
     );
   }
 
@@ -160,7 +225,7 @@ class RecommendationApiService {
         )
         .timeout(const Duration(seconds: 12));
 
-    final body = _decodeJson(response.body);
+    final body = _decodeJsonBytes(response.bodyBytes);
     _throwIfFailed(response.statusCode, body);
 
     final data = (body['data'] as Map<String, dynamic>? ?? const {})
@@ -188,7 +253,7 @@ class RecommendationApiService {
         )
         .timeout(const Duration(seconds: 12));
 
-    final body = _decodeJson(response.body);
+    final body = _decodeJsonBytes(response.bodyBytes);
     _throwIfFailed(response.statusCode, body);
 
     final data = (body['data'] as Map<String, dynamic>? ?? const {})
@@ -202,7 +267,7 @@ class RecommendationApiService {
 
   Map<String, dynamic> _decodeJson(String source) {
     if (source.trim().isEmpty) {
-      return const {'success': false, 'message': '服务器返回了空响应'};
+      return const {'success': false, 'message': '服务端返回了空响应'};
     }
     dynamic decoded;
     try {
@@ -216,7 +281,11 @@ class RecommendationApiService {
     if (decoded is Map<String, dynamic>) {
       return decoded;
     }
-    throw const RecommendationApiException('服务器返回格式错误');
+    throw const RecommendationApiException('服务端返回格式错误');
+  }
+
+  Map<String, dynamic> _decodeJsonBytes(List<int> bytes) {
+    return _decodeJson(utf8.decode(bytes, allowMalformed: true));
   }
 
   void _throwIfFailed(int statusCode, Map<String, dynamic> body) {
@@ -224,7 +293,9 @@ class RecommendationApiService {
     if (statusCode >= 200 && statusCode < 300 && success) {
       return;
     }
-    final message = body['message'] as String? ?? '网络请求失败';
+    final message = body['message'] as String? ??
+        body['detail'] as String? ??
+        '网络请求失败';
     throw RecommendationApiException(
       message,
       shouldRetry: statusCode >= 500 || statusCode == 0,

@@ -104,11 +104,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
         _loading = false;
         _isCached = false;
       });
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('分析失败：$e')),
+        SnackBar(content: Text(_friendlyAiError(error))),
       );
     }
   }
@@ -128,23 +128,28 @@ class _NutritionScreenState extends State<NutritionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        title: const Text('营养分析'),
-        actions: [
-          if (widget.agentService.isAvailable &&
-              !_loading &&
-              _analysis != null)
-            IconButton(
-              tooltip: '刷新分析',
-              onPressed: _analyze,
-              icon: const Icon(Icons.refresh_rounded),
-            ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('营养分析')),
       body: ThemedPageBackground(
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+          if (widget.agentService.isAvailable) ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: _loading ? null : _analyze,
+                icon: _loading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+                label: Text(_analysis == null ? '开始分析' : '重新分析'),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           Row(
             children: [
               _PeriodChip(
@@ -290,6 +295,28 @@ class _NutritionScreenState extends State<NutritionScreen> {
         ),
       ),
     );
+  }
+
+  String _friendlyAiError(Object error) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('未配置') || text.contains('not configured')) {
+      return 'AI 还没有配置好，请先到设置页完成配置。';
+    }
+    if (text.contains('401') || text.contains('403') || text.contains('invalid')) {
+      return 'AI 配置似乎无效，请检查密钥、模型或服务端配置。';
+    }
+    if (text.contains('timeout') || text.contains('timed out')) {
+      return 'AI 请求超时了，可以稍后再试一次。';
+    }
+    if (text.contains('network') ||
+        text.contains('socket') ||
+        text.contains('failed host lookup')) {
+      return '网络似乎不稳定，这次营养分析没有成功。';
+    }
+    if (text.contains('429') || text.contains('quota')) {
+      return 'AI 服务当前额度不足或请求太频繁，请稍后再试。';
+    }
+    return 'AI 分析失败了，请稍后重试。';
   }
 }
 

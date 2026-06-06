@@ -1,10 +1,4 @@
-// 对外接口：
-// - RecommendationDistanceBucket
-// - RecommendationPriceBucket
-// - RecommendationQuery
-// - RecommendationItem
-// - RecommendationDetail
-// - RecommendationSearchPage
+import 'recommendation_comment.dart';
 
 enum RecommendationDistanceBucket { within500m, within2km, within5km, beyond5km }
 
@@ -76,22 +70,11 @@ class RecommendationQuery {
     this.longitude,
   });
 
-  /// 距离筛选，可多选。
   final List<RecommendationDistanceBucket> distanceBuckets;
-
-  /// 价格筛选，可多选。
   final List<RecommendationPriceBucket> priceBuckets;
-
-  /// 推荐列表页码，从 1 开始。
   final int page;
-
-  /// 每页条数。
   final int pageSize;
-
-  /// 用户当前位置纬度，可为空。
   final double? latitude;
-
-  /// 用户当前位置经度，可为空。
   final double? longitude;
 
   Map<String, Object?> toJson() {
@@ -114,16 +97,9 @@ class RecommendationAggregate {
     required this.latestRecordedAt,
   });
 
-  /// 同菜品累计公开记录数。
   final int uploadCount;
-
-  /// 同菜品平均评分。
   final double? averageRating;
-
-  /// 同菜品平均价格。
   final double? averagePrice;
-
-  /// 同菜品最近一次被记录时间。
   final DateTime latestRecordedAt;
 
   factory RecommendationAggregate.fromMap(Map<String, Object?> map) {
@@ -132,7 +108,8 @@ class RecommendationAggregate {
       averageRating: (map['average_rating'] as num?)?.toDouble(),
       averagePrice: (map['average_price'] as num?)?.toDouble(),
       latestRecordedAt: DateTime.parse(
-        map['latest_recorded_at'] as String? ?? DateTime.now().toIso8601String(),
+        map['latest_recorded_at'] as String? ??
+            DateTime.now().toIso8601String(),
       ),
     );
   }
@@ -208,50 +185,32 @@ class RecommendationItem {
     required this.price,
     required this.rating,
     required this.aggregate,
-    this.distanceMeters,
     required this.reason,
     required this.feedback,
+    this.distanceMeters,
+    this.description,
+    this.uploaderName,
+    this.uploaderAvatar,
   });
 
-  /// 代表记录的远端主键。
   final String id;
-
-  /// 列表里展示的菜名。
   final String dishName;
-
-  /// 列表里展示的地点。
   final String location;
-
-  /// 代表记录价格。
   final double price;
-
-  /// 代表记录评分。
   final double rating;
-
-  /// 同菜品聚合统计。
   final RecommendationAggregate aggregate;
   final RecommendationFeedbackSummary feedback;
-
-  /// 与当前用户距离，单位米。
   final double? distanceMeters;
-
-  /// 后端给出的推荐理由。
   final String reason;
+  final String? description;
+  final String? uploaderName;
+  final String? uploaderAvatar;
 
-  /// 兼容旧界面字段。
   String get title => dishName;
-
-  /// 兼容旧界面字段。
   String get store => location;
-
-  /// 兼容旧界面字段。
   String get region => location;
-
-  /// 兼容旧界面字段。
   String get cuisine => '';
-
-  /// 兼容旧界面字段。
-  String get description => reason;
+  String get summaryDescription => description ?? reason;
 
   RecommendationItem copyWith({
     String? id,
@@ -260,9 +219,12 @@ class RecommendationItem {
     double? price,
     double? rating,
     RecommendationAggregate? aggregate,
+    RecommendationFeedbackSummary? feedback,
     double? distanceMeters,
     String? reason,
-    RecommendationFeedbackSummary? feedback,
+    String? description,
+    String? uploaderName,
+    String? uploaderAvatar,
   }) {
     return RecommendationItem(
       id: id ?? this.id,
@@ -271,9 +233,12 @@ class RecommendationItem {
       price: price ?? this.price,
       rating: rating ?? this.rating,
       aggregate: aggregate ?? this.aggregate,
+      feedback: feedback ?? this.feedback,
       distanceMeters: distanceMeters ?? this.distanceMeters,
       reason: reason ?? this.reason,
-      feedback: feedback ?? this.feedback,
+      description: description ?? this.description,
+      uploaderName: uploaderName ?? this.uploaderName,
+      uploaderAvatar: uploaderAvatar ?? this.uploaderAvatar,
     );
   }
 
@@ -287,11 +252,14 @@ class RecommendationItem {
       aggregate: RecommendationAggregate.fromMap(
         map['aggregate'] as Map<String, Object?>? ?? const {},
       ),
-      distanceMeters: (map['distance_meters'] as num?)?.toDouble(),
-      reason: map['reason'] as String? ?? '',
       feedback: RecommendationFeedbackSummary.fromMap(
         map['feedback'] as Map<String, Object?>? ?? const {},
       ),
+      distanceMeters: (map['distance_meters'] as num?)?.toDouble(),
+      reason: map['reason'] as String? ?? '',
+      description: map['description'] as String? ?? map['comment'] as String?,
+      uploaderName: map['uploader_name'] as String?,
+      uploaderAvatar: map['uploader_avatar'] as String?,
     );
   }
 }
@@ -305,46 +273,31 @@ class RecommendationDetail {
     required this.rating,
     required this.createdAt,
     required this.aggregate,
-    this.comment,
+    required this.feedback,
+    this.description,
     this.imageUrl,
     this.distanceMeters,
     this.reason,
-    required this.feedback,
+    this.uploaderName,
+    this.uploaderAvatar,
+    this.comments = const [],
   });
 
-  /// 代表记录的远端主键。
   final String id;
-
-  /// 详情展示菜名。
   final String dishName;
-
-  /// 详情展示地点。
   final String location;
-
-  /// 详情展示价格。
   final double? price;
-
-  /// 详情展示评分。
   final double? rating;
-
-  /// 该条代表记录的记录时间。
   final DateTime createdAt;
-
-  /// 同菜品聚合统计。
   final RecommendationAggregate aggregate;
-
-  /// 预留的用户评价文本。
-  final String? comment;
-
-  /// 远端图片地址。
-  final String? imageUrl;
-
-  /// 与当前用户距离，单位米。
-  final double? distanceMeters;
-
-  /// 推荐理由。
-  final String? reason;
   final RecommendationFeedbackSummary feedback;
+  final String? description;
+  final String? imageUrl;
+  final double? distanceMeters;
+  final String? reason;
+  final String? uploaderName;
+  final String? uploaderAvatar;
+  final List<RecommendationComment> comments;
 
   RecommendationDetail copyWith({
     String? id,
@@ -354,11 +307,14 @@ class RecommendationDetail {
     double? rating,
     DateTime? createdAt,
     RecommendationAggregate? aggregate,
-    String? comment,
+    RecommendationFeedbackSummary? feedback,
+    String? description,
     String? imageUrl,
     double? distanceMeters,
     String? reason,
-    RecommendationFeedbackSummary? feedback,
+    String? uploaderName,
+    String? uploaderAvatar,
+    List<RecommendationComment>? comments,
   }) {
     return RecommendationDetail(
       id: id ?? this.id,
@@ -368,11 +324,14 @@ class RecommendationDetail {
       rating: rating ?? this.rating,
       createdAt: createdAt ?? this.createdAt,
       aggregate: aggregate ?? this.aggregate,
-      comment: comment ?? this.comment,
+      feedback: feedback ?? this.feedback,
+      description: description ?? this.description,
       imageUrl: imageUrl ?? this.imageUrl,
       distanceMeters: distanceMeters ?? this.distanceMeters,
       reason: reason ?? this.reason,
-      feedback: feedback ?? this.feedback,
+      uploaderName: uploaderName ?? this.uploaderName,
+      uploaderAvatar: uploaderAvatar ?? this.uploaderAvatar,
+      comments: comments ?? this.comments,
     );
   }
 
@@ -389,13 +348,19 @@ class RecommendationDetail {
       aggregate: RecommendationAggregate.fromMap(
         map['aggregate'] as Map<String, Object?>? ?? const {},
       ),
-      comment: map['comment'] as String?,
-      imageUrl: map['image_url'] as String?,
-      distanceMeters: (map['distance_meters'] as num?)?.toDouble(),
-      reason: map['reason'] as String?,
       feedback: RecommendationFeedbackSummary.fromMap(
         map['feedback'] as Map<String, Object?>? ?? const {},
       ),
+      description: map['description'] as String? ?? map['comment'] as String?,
+      imageUrl: map['image_url'] as String?,
+      distanceMeters: (map['distance_meters'] as num?)?.toDouble(),
+      reason: map['reason'] as String?,
+      uploaderName: map['uploader_name'] as String?,
+      uploaderAvatar: map['uploader_avatar'] as String?,
+      comments: (map['comments'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, Object?>>()
+          .map(RecommendationComment.fromMap)
+          .toList(),
     );
   }
 }

@@ -152,7 +152,7 @@ class _InsightsGrid extends StatelessWidget {
         crossAxisCount: 2,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        childAspectRatio: 0.95,
+        mainAxisExtent: 210,
       ),
       itemBuilder: (context, index) {
         final card = cards[index];
@@ -174,7 +174,13 @@ class _InsightsGrid extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
-                Expanded(child: Text(card.subtitle)),
+                Expanded(
+                  child: Text(
+                    card.subtitle,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
                 const SizedBox(height: 10),
                 const Align(
                   alignment: Alignment.centerRight,

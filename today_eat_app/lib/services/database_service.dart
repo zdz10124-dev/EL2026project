@@ -1,18 +1,3 @@
-// 对外接口：
-// - DatabaseService.database
-// - DatabaseService.getDatabasePath
-// - DatabaseService.insertRecord
-// - DatabaseService.updateRecord
-// - DatabaseService.deleteRecord
-// - DatabaseService.deleteAllRecords
-// - DatabaseService.fetchRecords
-// - DatabaseService.getDatabaseFileSize
-// - DatabaseService.ensureUploadTasksForRecords
-// - DatabaseService.fetchUnsyncedUploadTasks
-// - DatabaseService.markUploadTaskFailed
-// - DatabaseService.markUploadTaskSynced
-// - DatabaseService.deleteUploadTaskByRecordId
-
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -26,12 +11,14 @@ class DatabaseService {
   DatabaseService._();
 
   static final DatabaseService instance = DatabaseService._();
-  static const int _databaseVersion = 3;
+  static const int _databaseVersion = 4;
 
   Database? _database;
 
   Future<Database> get database async {
-    if (_database != null) return _database!;
+    if (_database != null) {
+      return _database!;
+    }
     final dbPath = await getDatabasePath();
     _database = await openDatabase(
       dbPath,
@@ -117,12 +104,12 @@ class DatabaseService {
     final existingTasks = {
       for (final map in existingMaps)
         (map['client_record_id'] as String? ?? ''):
-            RecommendationUploadTask.fromMap(map)
+            RecommendationUploadTask.fromMap(map),
     };
 
     final batch = db.batch();
     for (final record in records) {
-      if (record.id == null) {
+      if (record.id == null || !record.autoUploadEnabled) {
         continue;
       }
 
@@ -131,8 +118,7 @@ class DatabaseService {
       final shouldReplace =
           task == null ||
           task.recordUpdatedAt.toIso8601String() != recordUpdatedAt ||
-          (task.status != RecommendationUploadTaskStatus.synced &&
-              task.status != RecommendationUploadTaskStatus.invalid);
+          task.status != RecommendationUploadTaskStatus.synced;
 
       if (!shouldReplace) {
         continue;
@@ -229,6 +215,39 @@ class DatabaseService {
     );
   }
 
+  Future<void> deleteUploadTaskByClientRecordId(String clientRecordId) async {
+    final db = await database;
+    await db.delete(
+      'recommendation_upload_tasks',
+      where: 'client_record_id = ?',
+      whereArgs: [clientRecordId],
+    );
+  }
+
+  Future<void> updateRecommendationSyncState({
+    required int recordId,
+    required LocalRecommendationStatus status,
+    String? remoteRecommendationId,
+    bool? autoUploadEnabled,
+  }) async {
+    final db = await database;
+    final values = <String, Object?>{
+      'recommendation_status': status.dbValue,
+    };
+    if (remoteRecommendationId != null || status == LocalRecommendationStatus.localOnly) {
+      values['remote_recommendation_id'] = remoteRecommendationId;
+    }
+    if (autoUploadEnabled != null) {
+      values['auto_upload_enabled'] = autoUploadEnabled ? 1 : 0;
+    }
+    await db.update(
+      'meal_records',
+      values,
+      where: 'id = ?',
+      whereArgs: [recordId],
+    );
+  }
+
   Future<void> _createMealRecordsTable(Database db) async {
     await db.execute('''
       CREATE TABLE meal_records(
@@ -246,6 +265,9 @@ class DatabaseService {
         location TEXT NOT NULL,
         price REAL,
         comment TEXT,
+        remote_recommendation_id TEXT,
+        auto_upload_enabled INTEGER NOT NULL DEFAULT 1,
+        recommendation_status TEXT NOT NULL DEFAULT 'local_only',
         province TEXT,
         city TEXT,
         district TEXT,
@@ -294,12 +316,6 @@ class DatabaseService {
       'ALTER TABLE meal_records ADD COLUMN district TEXT',
       'district',
     );
-    if (!columnNames.contains('district') && columnNames.contains('street')) {
-      await db.execute(
-        'UPDATE meal_records SET district = street WHERE district IS NULL OR district = ""',
-      );
-    }
-
     await addColumn(
       'ALTER TABLE meal_records ADD COLUMN client_record_id TEXT',
       'client_record_id',
@@ -308,18 +324,50 @@ class DatabaseService {
       'ALTER TABLE meal_records ADD COLUMN updated_at TEXT',
       'updated_at',
     );
-    await addColumn('ALTER TABLE meal_records ADD COLUMN comment TEXT', 'comment');
-    await addColumn('ALTER TABLE meal_records ADD COLUMN latitude REAL', 'latitude');
+    await addColumn(
+      'ALTER TABLE meal_records ADD COLUMN comment TEXT',
+      'comment',
+    );
+    await addColumn(
+      'ALTER TABLE meal_records ADD COLUMN latitude REAL',
+      'latitude',
+    );
     await addColumn(
       'ALTER TABLE meal_records ADD COLUMN longitude REAL',
       'longitude',
     );
+    await addColumn(
+      'ALTER TABLE meal_records ADD COLUMN remote_recommendation_id TEXT',
+      'remote_recommendation_id',
+    );
+    await addColumn(
+      'ALTER TABLE meal_records ADD COLUMN auto_upload_enabled INTEGER NOT NULL DEFAULT 1',
+      'auto_upload_enabled',
+    );
+    await addColumn(
+      "ALTER TABLE meal_records ADD COLUMN recommendation_status TEXT NOT NULL DEFAULT 'local_only'",
+      'recommendation_status',
+    );
+
+    if (!columnNames.contains('district') && columnNames.contains('street')) {
+      await db.execute(
+        'UPDATE meal_records SET district = street WHERE district IS NULL OR district = ""',
+      );
+    }
 
     await db.execute(
-      'UPDATE meal_records SET updated_at = COALESCE(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = ""',
+      'UPDATE meal_records SET updated_at = COALESCE(updated_at, created_at) '
+      'WHERE updated_at IS NULL OR updated_at = ""',
     );
     await db.execute(
-      'UPDATE meal_records SET client_record_id = COALESCE(client_record_id, "legacy_" || id) WHERE client_record_id IS NULL OR client_record_id = ""',
+      'UPDATE meal_records SET client_record_id = COALESCE(client_record_id, "legacy_" || id) '
+      'WHERE client_record_id IS NULL OR client_record_id = ""',
+    );
+    await db.execute(
+      "UPDATE meal_records SET auto_upload_enabled = COALESCE(auto_upload_enabled, 1)",
+    );
+    await db.execute(
+      "UPDATE meal_records SET recommendation_status = COALESCE(recommendation_status, 'local_only')",
     );
 
     final taskTables = await db.rawQuery(

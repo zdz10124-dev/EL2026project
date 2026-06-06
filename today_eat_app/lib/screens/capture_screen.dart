@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -31,7 +32,10 @@ class CaptureScreen extends StatefulWidget {
 }
 
 class _CaptureScreenState extends State<CaptureScreen> {
+  static const int _pageSize = 12;
+
   bool _busy = false;
+  int _visibleCount = _pageSize;
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +50,16 @@ class _CaptureScreenState extends State<CaptureScreen> {
           stream: widget.repository.recordsStream,
           initialData: const [],
           builder: (context, snapshot) {
-            final records = snapshot.data ?? const [];
+            final records = snapshot.data ?? const <MealRecord>[];
+            final visibleRecords = records.take(_visibleCount).toList();
+            if (_visibleCount > records.length && records.isNotEmpty) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() => _visibleCount = records.length);
+                }
+              });
+            }
+
             return ListView(
               children: [
                 Text(
@@ -61,9 +74,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 const SizedBox(height: 20),
                 _PreviewPlaceholder(
                   config: widget.config,
-                  latestImagePath: records.isEmpty
-                      ? null
-                      : records.first.imagePath,
+                  latestImagePath: records.isEmpty ? null : records.first.imagePath,
                 ),
                 const SizedBox(height: 18),
                 Text(widget.config.capture.cameraHint),
@@ -81,52 +92,68 @@ class _CaptureScreenState extends State<CaptureScreen> {
                     _CameraActionButton(
                       size: layout.cameraActionSize,
                       icon: Icons.photo_camera_rounded,
-                      onPressed: _busy
-                          ? null
-                          : () => _openEditor(fromCamera: true),
+                      onPressed: _busy ? null : () => _openEditor(fromCamera: true),
                     ),
                     const SizedBox(width: 20),
                     _SquareActionButton(
                       size: layout.secondaryActionSize,
                       icon: Icons.image_outlined,
-                      onPressed: _busy
-                          ? null
-                          : () => _openEditor(fromCamera: false),
+                      onPressed: _busy ? null : () => _openEditor(fromCamera: false),
                     ),
                   ],
                 ),
-                if (records.isNotEmpty) ...[
-                  const SizedBox(height: 24),
-                  ...List.generate(records.take(3).length, (index) {
-                    final isLast = index == records.take(3).length - 1;
-                    return Padding(
-                      padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
-                      child: _RecentRecordCard(record: records[index]),
-                    );
-                  }),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Text(
+                      '记录',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const Spacer(),
+                    Text(
+                      '共 ${records.length} 条',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (records.isEmpty)
+                  const SectionCard(
+                    child: Text('还没有记录，拍下今天这顿饭后，这里会慢慢长起来。'),
+                  )
+                else ...[
+                  ...visibleRecords.map(
+                    (record) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _RecentRecordCard(
+                        record: record,
+                        onEdit: () => _editRecord(record),
+                        onDelete: () => _deleteRecord(record),
+                        onToggleAutoUpload: () => _toggleAutoUpload(record),
+                        onToggleRemoteVisibility: record.remoteRecommendationId?.isNotEmpty == true
+                            ? () => _toggleRemoteVisibility(record)
+                            : null,
+                      ),
+                    ),
+                  ),
+                  if (visibleRecords.length < records.length)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: OutlinedButton(
+                        onPressed: () {
+                          setState(() {
+                            _visibleCount =
+                                (_visibleCount + _pageSize).clamp(0, records.length);
+                          });
+                        },
+                        child: const Text('继续加载更多记录'),
+                      ),
+                    ),
                 ],
               ],
             );
           },
         ),
-      ),
-    );
-  }
-
-  // ignore: unused_element
-  void _showAiNotConfiguredDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('AI 未配置'),
-        content: const Text('AI 功能需要先在设置中配置模型。\n\n'
-            '请前往「设置 → 智能功能 → AI 模型配置」完成设置。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('知道了'),
-          ),
-        ],
       ),
     );
   }
@@ -137,7 +164,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
     final XFile? file = fromCamera
         ? await widget.repository.captureFromCamera()
         : await widget.repository.pickFromGallery();
-    setState(() => _busy = false);
+    if (mounted) {
+      setState(() => _busy = false);
+    }
     if (!mounted || file == null) {
       return;
     }
@@ -155,6 +184,93 @@ class _CaptureScreenState extends State<CaptureScreen> {
       ),
     );
   }
+
+  Future<void> _editRecord(MealRecord record) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => EditMealScreen(
+          config: widget.config,
+          repository: widget.repository,
+          agentService: widget.agentService,
+          imagePath: record.imagePath,
+          fromCamera: false,
+          initialDraft: MealDraft(
+            dishName: record.dishName == '未填写' ? '' : record.dishName,
+            location: record.location == '未填写' ? '' : record.location,
+            priceText: record.price?.toString() ?? '',
+            commentText: record.comment ?? '',
+            ratingScore: record.ratingScore == null ? null : record.ratingScore! / 2,
+            updatedAt: record.updatedAt,
+          ),
+          existingRecord: record,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteRecord(MealRecord record) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除记录'),
+        content: Text(
+          record.remoteRecommendationId?.isNotEmpty == true
+              ? '这条记录已经上传过，删除时会尽量一并下架远端记录。确定继续吗？'
+              : '确定删除这条记录吗？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) {
+      return;
+    }
+    await widget.repository.deleteRecord(record);
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('记录已删除')),
+    );
+  }
+
+  Future<void> _toggleAutoUpload(MealRecord record) async {
+    await widget.repository.setRecordAutoUploadEnabled(
+      record,
+      !record.autoUploadEnabled,
+    );
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          record.autoUploadEnabled ? '已关闭这条记录的自动上传' : '已开启这条记录的自动上传',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleRemoteVisibility(MealRecord record) async {
+    final active = record.recommendationStatus == LocalRecommendationStatus.unlisted;
+    await widget.repository.setRecommendationVisibility(record, active: active);
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(active ? '这条记录已重新上架' : '这条记录已从联网推荐下架'),
+      ),
+    );
+  }
 }
 
 class EditMealScreen extends StatefulWidget {
@@ -166,6 +282,7 @@ class EditMealScreen extends StatefulWidget {
     required this.fromCamera,
     required this.initialDraft,
     this.agentService,
+    this.existingRecord,
   });
 
   final UiConfig config;
@@ -174,6 +291,7 @@ class EditMealScreen extends StatefulWidget {
   final bool fromCamera;
   final MealDraft initialDraft;
   final AgentService? agentService;
+  final MealRecord? existingRecord;
 
   @override
   State<EditMealScreen> createState() => _EditMealScreenState();
@@ -189,8 +307,8 @@ class _EditMealScreenState extends State<EditMealScreen> {
   late double _ratingValue;
   bool _ratingTouched = false;
   bool _saving = false;
-  // AI fields
   bool _aiAnalyzing = false;
+  bool _autoUploadEnabled = true;
   String? _aiCuisine;
   String? _aiSpiceLevel;
   String? _aiIngredients;
@@ -198,7 +316,6 @@ class _EditMealScreenState extends State<EditMealScreen> {
   String? _aiSideDish;
   String? _aiDrink;
   String? _aiSnack;
-  // GPS fields
   bool _locating = true;
   String _locationStatus = '定位中...';
   int _locationRequestId = 0;
@@ -207,19 +324,24 @@ class _EditMealScreenState extends State<EditMealScreen> {
   @override
   void initState() {
     super.initState();
+    final existing = widget.existingRecord;
     _imagePath = widget.imagePath;
     _dishController = TextEditingController(text: widget.initialDraft.dishName);
-    _locationController = TextEditingController(
-      text: widget.initialDraft.location,
-    );
-    _priceController = TextEditingController(
-      text: widget.initialDraft.priceText,
-    );
-    _commentController = TextEditingController(
-      text: widget.initialDraft.commentText,
-    );
+    _locationController =
+        TextEditingController(text: widget.initialDraft.location);
+    _priceController = TextEditingController(text: widget.initialDraft.priceText);
+    _commentController =
+        TextEditingController(text: widget.initialDraft.commentText);
     _ratingValue = widget.initialDraft.ratingScore ?? 0;
     _ratingTouched = widget.initialDraft.ratingScore != null;
+    _autoUploadEnabled = existing?.autoUploadEnabled ?? true;
+    _aiMainDish = existing?.mainDish;
+    _aiSideDish = existing?.sideDish;
+    _aiDrink = existing?.drink;
+    _aiSnack = existing?.snack;
+    _aiCuisine = existing?.cuisine;
+    _aiSpiceLevel = existing?.spiceLevel;
+    _aiIngredients = existing?.ingredients;
     _beginGpsLookup();
   }
 
@@ -236,317 +358,234 @@ class _EditMealScreenState extends State<EditMealScreen> {
   Widget build(BuildContext context) {
     final layout = widget.config.layout;
     final capture = widget.config.capture;
+    final isEditing = widget.existingRecord != null;
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(title: const Text('编辑记录')),
+      appBar: AppBar(title: Text(isEditing ? '编辑记录' : '编辑记录')),
       body: ThemedPageBackground(
         child: SafeArea(
           child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(
-            horizontal: layout.pageHorizontalPadding,
-            vertical: layout.pageVerticalPadding,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(layout.cardRadius),
-                child: Image.file(
-                  File(_imagePath),
-                  height: layout.cameraFrameHeight,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
+            padding: EdgeInsets.symmetric(
+              horizontal: layout.pageHorizontalPadding,
+              vertical: layout.pageVerticalPadding,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(layout.cardRadius),
+                  child: Image.file(
+                    File(_imagePath),
+                    height: layout.cameraFrameHeight,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              SectionCard(
-                child: Column(
-                  children: [
-                    RatingStars(
-                      value: _ratingValue,
-                      onChanged: (value) => setState(() {
-                        _ratingTouched = true;
-                        _ratingValue = value;
-                      }),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(_ratingTouched ? '当前评分：$_ratingValue 星' : '当前评分：未打分'),
-                    const SizedBox(height: 18),
-                    TextField(
-                      controller: _dishController,
-                      decoration: InputDecoration(
-                        labelText: capture.dishLabel,
-                        hintText: capture.placeholderDish,
+                const SizedBox(height: 18),
+                SectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextField(
+                        controller: _dishController,
+                        decoration: InputDecoration(labelText: capture.dishLabel),
                       ),
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: _locationController,
-                      decoration: InputDecoration(
-                        labelText: capture.locationLabel,
-                        hintText: capture.placeholderLocation,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: _priceController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: capture.priceLabel,
-                        hintText: capture.placeholderPrice,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: _commentController,
-                      minLines: 2,
-                      maxLines: 4,
-                      decoration: const InputDecoration(
-                        labelText: '描述栏（选填）',
-                        hintText: '比如口感、环境、分量、排队情况，或者你当时的感受',
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        '记录时间：${DateFormat('MM/dd HH:mm').format(DateTime.now())}',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.location_on_outlined,
-                            size: 18,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              _locating
-                                  ? 'GPS 定位中...'
-                                  : 'GPS 地点：$_locationStatus',
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: '重新定位',
-                            onPressed: _locating ? null : _beginGpsLookup,
-                            icon: const Icon(Icons.refresh_rounded, size: 18),
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(
-                              minWidth: 28,
-                              minHeight: 28,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    // AI 智能识别
-                    if (widget.agentService != null &&
-                        widget.agentService!.isAvailable) ...[
                       const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: _aiAnalyzing ? null : _analyzeWithAI,
-                          icon: _aiAnalyzing
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2),
+                      TextField(
+                        controller: _locationController,
+                        decoration: InputDecoration(
+                          labelText: capture.locationLabel,
+                          suffixIcon: _locating
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
                                 )
-                              : const Icon(Icons.auto_awesome),
-                          label: Text(
-                              _aiAnalyzing ? 'AI 识别中...' : 'AI 识别图片'),
+                              : IconButton(
+                                  onPressed: _beginGpsLookup,
+                                  icon: const Icon(Icons.my_location_outlined),
+                                ),
                         ),
                       ),
-                      if (_aiMainDish != null ||
-                          _aiCuisine != null ||
-                          _aiSpiceLevel != null) ...[
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.amber.shade50,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.amber.shade200),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('AI 识别结果',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13)),
-                              const SizedBox(height: 4),
-                              if (_aiMainDish != null)
-                                Text('主菜：$_aiMainDish',
-                                    style: const TextStyle(fontSize: 12)),
-                              if (_aiSideDish != null)
-                                Text('配菜：$_aiSideDish',
-                                    style: const TextStyle(fontSize: 12)),
-                              if (_aiDrink != null)
-                                Text('饮品：$_aiDrink',
-                                    style: const TextStyle(fontSize: 12)),
-                              if (_aiSnack != null)
-                                Text('小吃：$_aiSnack',
-                                    style: const TextStyle(fontSize: 12)),
-                              if (_aiCuisine != null)
-                                Text('菜系：$_aiCuisine',
-                                    style: const TextStyle(fontSize: 12)),
-                              if (_aiSpiceLevel != null)
-                                Text('辣度：$_aiSpiceLevel',
-                                    style: const TextStyle(fontSize: 12)),
-                              if (_aiIngredients != null)
-                                Text('食材：$_aiIngredients',
-                                    style: const TextStyle(fontSize: 12)),
-                            ],
-                          ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _locationStatus,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _priceController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
                         ),
+                        decoration: InputDecoration(labelText: capture.priceLabel),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _commentController,
+                        minLines: 2,
+                        maxLines: 4,
+                        decoration: const InputDecoration(
+                          labelText: '描述',
+                          hintText: '写一下口味、分量、踩雷点或推荐理由',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text('评分', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      RatingStars(
+                        value: _ratingTouched ? _ratingValue : 0,
+                        onChanged: (value) {
+                          setState(() {
+                            _ratingTouched = true;
+                            _ratingValue = value;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('自动上传这条记录'),
+                        subtitle: const Text('关闭后只保存在本地；开启后会尝试同步到联网推荐。'),
+                        value: _autoUploadEnabled,
+                        onChanged: (value) {
+                          setState(() => _autoUploadEnabled = value);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                SectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('AI 辅助', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      Text(
+                        '可以用 AI 帮你补菜名和分析信息，失败时会给出更明确的提示。',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.tonal(
+                        onPressed: _aiAnalyzing ? null : _analyzeWithAI,
+                        child: Text(_aiAnalyzing ? '识别中...' : '用 AI 识别图片'),
+                      ),
+                      if (_aiMainDish?.isNotEmpty == true ||
+                          _aiCuisine?.isNotEmpty == true ||
+                          _aiIngredients?.isNotEmpty == true) ...[
+                        const SizedBox(height: 12),
+                        if (_aiMainDish?.isNotEmpty == true) Text('主菜：$_aiMainDish'),
+                        if (_aiSideDish?.isNotEmpty == true) Text('配菜：$_aiSideDish'),
+                        if (_aiDrink?.isNotEmpty == true) Text('饮品：$_aiDrink'),
+                        if (_aiSnack?.isNotEmpty == true) Text('小吃：$_aiSnack'),
+                        if (_aiCuisine?.isNotEmpty == true) Text('菜系：$_aiCuisine'),
+                        if (_aiSpiceLevel?.isNotEmpty == true) Text('辣度：$_aiSpiceLevel'),
+                        if (_aiIngredients?.isNotEmpty == true)
+                          Text('食材：$_aiIngredients'),
                       ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _saving ? null : _handleRetry,
-                      child: Text(
-                        widget.fromCamera
-                            ? capture.retakeText
-                            : capture.reselectText,
-                      ),
-                    ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _saving ? null : _save,
+                    child: Text(_saving ? '保存中...' : capture.confirmText),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: _saving ? null : _handleSave,
-                      child: Text(capture.confirmText),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _handleRetry() async {
-    widget.repository.cacheDraft(
-      MealDraft(
-        dishName: _dishController.text,
-        location: _locationController.text,
-        priceText: _priceController.text,
-        commentText: _commentController.text,
-        ratingScore: _ratingTouched ? _ratingValue : null,
-      ),
-    );
-
-    final XFile? file = widget.fromCamera
-        ? await widget.repository.captureFromCamera()
-        : await widget.repository.pickFromGallery();
-
-    if (!mounted) {
-      return;
-    }
-    if (file == null) {
-      Navigator.of(context).pop();
-      return;
-    }
-
-    final draft = widget.repository.consumeDraftIfFresh() ?? MealDraft.empty();
-    setState(() {
-      _imagePath = file.path;
-      _dishController.text = draft.dishName;
-      _locationController.text = draft.location;
-      _priceController.text = draft.priceText;
-      _commentController.text = draft.commentText;
-      _ratingTouched = draft.ratingScore != null;
-      _ratingValue = draft.ratingScore ?? 0;
-    });
-    _beginGpsLookup();
-  }
-
-  Future<void> _handleSave() async {
-    final priceText = _priceController.text.trim();
-    if (priceText.isNotEmpty && double.tryParse(priceText) == null) {
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('金额格式有误'),
-          content: const Text('请输入整数或小数金额，例如 12 或 12.5。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('我知道了'),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      );
-      return;
-    }
-
-    setState(() => _saving = true);
-    await widget.repository.saveRecord(
-      sourceImagePath: _imagePath,
-      dishNameInput: _dishController.text,
-      locationInput: _locationController.text,
-      priceText: priceText,
-      ratingScore: _ratingTouched ? _ratingValue : null,
-      aiMainDish: _aiMainDish,
-      aiSideDish: _aiSideDish,
-      aiDrink: _aiDrink,
-      aiSnack: _aiSnack,
-      aiSpiceLevel: _aiSpiceLevel,
-      aiIngredients: _aiIngredients,
-      aiCuisine: _aiCuisine,
-      commentInput: _commentController.text,
-      province: _lastLocationResult?.province,
-      city: _lastLocationResult?.city,
-      district: _lastLocationResult?.district,
-      latitude: _lastLocationResult?.latitude,
-      longitude: _lastLocationResult?.longitude,
+      ),
     );
-    if (!mounted) {
+  }
+
+  Future<void> _save() async {
+    if (_saving) {
       return;
     }
-    setState(() => _saving = false);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('已保存到本地数据库')));
-    Navigator.of(context).pop();
+    setState(() => _saving = true);
+    final existing = widget.existingRecord;
+    try {
+      if (existing == null) {
+        await widget.repository.saveRecord(
+          sourceImagePath: _imagePath,
+          dishNameInput: _dishController.text,
+          locationInput: _locationController.text,
+          priceText: _priceController.text,
+          ratingScore: _ratingTouched ? _ratingValue : null,
+          aiMainDish: _aiMainDish,
+          aiSideDish: _aiSideDish,
+          aiDrink: _aiDrink,
+          aiSnack: _aiSnack,
+          aiSpiceLevel: _aiSpiceLevel,
+          aiIngredients: _aiIngredients,
+          aiCuisine: _aiCuisine,
+          commentInput: _commentController.text,
+          province: _lastLocationResult?.province,
+          city: _lastLocationResult?.city,
+          district: _lastLocationResult?.district,
+          latitude: _lastLocationResult?.latitude,
+          longitude: _lastLocationResult?.longitude,
+          autoUploadEnabled: _autoUploadEnabled,
+        );
+      } else {
+        await widget.repository.updateRecord(
+          original: existing,
+          dishNameInput: _dishController.text,
+          locationInput: _locationController.text,
+          priceText: _priceController.text,
+          ratingScore: _ratingTouched ? _ratingValue : null,
+          commentInput: _commentController.text,
+          province: _lastLocationResult?.province ?? existing.province,
+          city: _lastLocationResult?.city ?? existing.city,
+          district: _lastLocationResult?.district ?? existing.district,
+          latitude: _lastLocationResult?.latitude ?? existing.latitude,
+          longitude: _lastLocationResult?.longitude ?? existing.longitude,
+          autoUploadEnabled: _autoUploadEnabled,
+        );
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(existing == null ? '已保存到本地' : '记录已更新')),
+      );
+      Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('保存失败：$error')),
+      );
+    }
   }
 
   Future<void> _analyzeWithAI() async {
     final agent = widget.agentService;
     if (agent == null || !agent.isAvailable) {
-      _showAiNotConfiguredDialog();
+      _showPlainDialog(
+        title: 'AI 未配置',
+        content: '还没有可用的 AI 模型配置，请先到设置页完成配置。',
+      );
       return;
     }
 
     setState(() => _aiAnalyzing = true);
     try {
       final result = await agent.analyzeFoodImage(_imagePath);
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _aiAnalyzing = false;
         _aiMainDish = result.mainDish;
@@ -556,16 +595,17 @@ class _EditMealScreenState extends State<EditMealScreen> {
         _aiCuisine = result.cuisine;
         _aiSpiceLevel = result.spiceLevel;
         _aiIngredients = result.ingredients;
-        // 如果用户还没填菜品，用 AI 识别的结果填充
-        if (_dishController.text.isEmpty && result.dishName.isNotEmpty) {
+        if (_dishController.text.trim().isEmpty && result.dishName.isNotEmpty) {
           _dishController.text = result.dishName;
         }
       });
-    } catch (e) {
-      if (!mounted) return;
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
       setState(() => _aiAnalyzing = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('AI 识别失败：$e')),
+        SnackBar(content: Text(_friendlyAiError(error))),
       );
     }
   }
@@ -589,6 +629,13 @@ class _EditMealScreenState extends State<EditMealScreen> {
           _lastLocationResult = updated;
           _locating = false;
           _locationStatus = updated.message;
+          if (_locationController.text.trim().isEmpty &&
+              updated.city?.isNotEmpty == true) {
+            _locationController.text =
+                updated.district?.isNotEmpty == true
+                    ? '${updated.city}${updated.district}'
+                    : updated.city!;
+          }
         });
       },
     );
@@ -602,13 +649,38 @@ class _EditMealScreenState extends State<EditMealScreen> {
     });
   }
 
-  void _showAiNotConfiguredDialog() {
-    showDialog(
+  String _friendlyAiError(Object error) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('未配置') || text.contains('not configured')) {
+      return 'AI 还没有配置好，请先到设置页完成配置。';
+    }
+    if (text.contains('401') || text.contains('403') || text.contains('invalid')) {
+      return 'AI 配置似乎无效，请检查密钥、模型或服务端配置。';
+    }
+    if (text.contains('timeout') || text.contains('timed out')) {
+      return 'AI 请求超时了，可以稍后再试一次。';
+    }
+    if (text.contains('network') || text.contains('socket') || text.contains('failed host lookup')) {
+      return '网络似乎不稳定，AI 识别暂时没有成功。';
+    }
+    if (text.contains('429') || text.contains('quota')) {
+      return 'AI 服务当前额度不足或请求太频繁，请稍后再试。';
+    }
+    if (text.contains('format') || text.contains('json')) {
+      return 'AI 返回的内容格式不完整，这次识别没有成功。';
+    }
+    return 'AI 识别失败了，请稍后重试。';
+  }
+
+  void _showPlainDialog({
+    required String title,
+    required String content,
+  }) {
+    showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('AI 未配置'),
-        content: const Text('AI 功能需要先在设置中配置模型。\n\n'
-            '请前往「设置 → 智能功能 → AI 模型配置」完成设置。'),
+        title: Text(title),
+        content: Text(content),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
@@ -660,19 +732,21 @@ class _PreviewPlaceholder extends StatelessWidget {
                 const SizedBox(height: 14),
                 Text(
                   '相机预览区域',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(color: Colors.white),
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(color: Colors.white),
                 ),
                 const SizedBox(height: 8),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 30),
                   child: Text(
-                    '当前版本使用系统相机/相册完成拍摄与选图，后续可切换为实时摄像头预览。',
+                    '当前版本使用系统相机或相册完成拍摄与选图。',
                     textAlign: TextAlign.center,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.copyWith(color: Colors.white70),
                   ),
                 ),
               ],
@@ -740,49 +814,158 @@ class _SquareActionButton extends StatelessWidget {
 }
 
 class _RecentRecordCard extends StatelessWidget {
-  const _RecentRecordCard({required this.record});
+  const _RecentRecordCard({
+    required this.record,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onToggleAutoUpload,
+    required this.onToggleRemoteVisibility,
+  });
 
   final MealRecord record;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final VoidCallback onToggleAutoUpload;
+  final VoidCallback? onToggleRemoteVisibility;
 
   @override
   Widget build(BuildContext context) {
     return SectionCard(
       padding: const EdgeInsets.all(12),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: Image.file(
-              File(record.imagePath),
-              width: 82,
-              height: 82,
-              fit: BoxFit.cover,
-              errorBuilder: (_, error, stackTrace) => Container(
-                width: 82,
-                height: 82,
-                color: Colors.grey.shade200,
-                child: const Icon(Icons.broken_image_outlined),
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  record.dishName,
-                  style: Theme.of(context).textTheme.titleMedium,
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Image.file(
+                  File(record.imagePath),
+                  width: 82,
+                  height: 82,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, error, stackTrace) => Container(
+                    width: 82,
+                    height: 82,
+                    color: Colors.grey.shade200,
+                    child: const Icon(Icons.broken_image_outlined),
+                  ),
                 ),
-                const SizedBox(height: 4),
-                Text(record.location),
-                const SizedBox(height: 4),
-                Text(DateFormat('MM/dd HH:mm').format(record.createdAt)),
-              ],
-            ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      record.dishName,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(record.location),
+                    const SizedBox(height: 4),
+                    Text(DateFormat('MM/dd HH:mm').format(record.createdAt)),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(record.ratingLabel),
+                  const SizedBox(height: 8),
+                  PopupMenuButton<String>(
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'edit':
+                          onEdit();
+                          break;
+                        case 'delete':
+                          onDelete();
+                          break;
+                        case 'upload':
+                          onToggleAutoUpload();
+                          break;
+                        case 'visibility':
+                          onToggleRemoteVisibility?.call();
+                          break;
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Text('编辑'),
+                      ),
+                      PopupMenuItem(
+                        value: 'upload',
+                        child: Text(record.autoUploadEnabled ? '关闭自动上传' : '开启自动上传'),
+                      ),
+                      if (onToggleRemoteVisibility != null)
+                        PopupMenuItem(
+                          value: 'visibility',
+                          child: Text(
+                            record.recommendationStatus == LocalRecommendationStatus.unlisted
+                                ? '重新上架'
+                                : '手动下架',
+                          ),
+                        ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Text('删除'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
           ),
-          Text(record.ratingLabel),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _StatusPill(label: _recommendationStatusText(record)),
+              _StatusPill(label: record.autoUploadEnabled ? '自动上传开启' : '仅本地'),
+              if (record.comment?.trim().isNotEmpty == true)
+                _StatusPill(label: '有描述'),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+
+  String _recommendationStatusText(MealRecord record) {
+    switch (record.recommendationStatus) {
+      case LocalRecommendationStatus.localOnly:
+        return '未上传';
+      case LocalRecommendationStatus.pendingUpload:
+        return '等待上传';
+      case LocalRecommendationStatus.uploaded:
+        return '已上传';
+      case LocalRecommendationStatus.uploadFailed:
+        return '上传失败';
+      case LocalRecommendationStatus.unlisted:
+        return '已下架';
+    }
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.bodySmall,
       ),
     );
   }
