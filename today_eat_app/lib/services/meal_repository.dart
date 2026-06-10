@@ -153,6 +153,9 @@ class MealRepository {
   Future<XFile?> pickFromGallery() =>
       _imagePicker.pickImage(source: ImageSource.gallery);
 
+  Future<List<XFile>> pickMultiFromGallery() =>
+      _imagePicker.pickMultiImage(limit: 5, imageQuality: 85);
+
   MealDraft? consumeDraftIfFresh() {
     if (!_shouldUseDraftOnNextOpen) {
       return null;
@@ -184,7 +187,7 @@ class MealRepository {
   }
 
   Future<void> saveRecord({
-    required String sourceImagePath,
+    required List<String> sourceImagePaths,
     required String dishNameInput,
     required String locationInput,
     required String priceText,
@@ -205,12 +208,15 @@ class MealRepository {
     bool? autoUploadEnabled,
   }) async {
     final now = DateTime.now();
-    final savedImagePath = await _copyImageToAppDir(sourceImagePath);
+    final savedPaths = <String>[];
+    for (final src in sourceImagePaths) {
+      savedPaths.add(await _copyImageToAppDir(src));
+    }
     final record = buildRecord(
       clientRecordId: _generateClientRecordId(now),
       createdAt: now,
       updatedAt: now,
-      imagePath: savedImagePath,
+      imagePaths: savedPaths,
       dishNameInput: dishNameInput,
       locationInput: locationInput,
       priceText: priceText,
@@ -261,7 +267,7 @@ class MealRepository {
       clientRecordId: original.clientRecordId,
       createdAt: original.createdAt,
       updatedAt: DateTime.now(),
-      imagePath: original.imagePath,
+      imagePaths: original.imagePaths,
       dishNameInput: dishNameInput,
       locationInput: locationInput,
       priceText: priceText,
@@ -296,7 +302,7 @@ class MealRepository {
     required String clientRecordId,
     required DateTime createdAt,
     required DateTime updatedAt,
-    required String imagePath,
+    required List<String> imagePaths,
     required String dishNameInput,
     required String locationInput,
     required String priceText,
@@ -327,7 +333,7 @@ class MealRepository {
       clientRecordId: clientRecordId,
       createdAt: createdAt,
       updatedAt: updatedAt,
-      imagePath: imagePath,
+      imagePaths: imagePaths,
       dishName: dishName,
       location: location,
       price: parsedPrice,
@@ -370,7 +376,9 @@ class MealRepository {
       await _databaseService.deleteRecord(record.id!);
       await _databaseService.deleteUploadTaskByRecordId(record.id!);
     }
-    await _deleteImageIfExists(record.imagePath);
+    for (final path in record.imagePaths) {
+      await _deleteImageIfExists(path);
+    }
     await refreshRecords();
   }
 
@@ -378,7 +386,9 @@ class MealRepository {
     final records = await fetchRecords();
     await _databaseService.deleteAllRecords();
     for (final record in records) {
-      await _deleteImageIfExists(record.imagePath);
+      for (final path in record.imagePaths) {
+        await _deleteImageIfExists(path);
+      }
     }
     await refreshRecords();
   }

@@ -17,6 +17,7 @@ import 'package:share_plus/share_plus.dart';
 import '../models/meal_record.dart';
 import '../models/style_presets.dart';
 import '../services/meal_repository.dart';
+import '../widgets/image_viewer.dart';
 import '../widgets/themed_page_background.dart';
 
 class OptimizedJournalNotebookPage extends StatefulWidget {
@@ -671,42 +672,68 @@ class _NotebookRecordCard extends StatelessWidget {
     final record = item.record;
     final dishText = record.dishName == '未填写' ? '' : record.dishName;
     final locationText = record.location == '未填写' ? '' : record.location;
+    final extraCount = record.imagePaths.length > 1
+        ? record.imagePaths.length - 1
+        : 0;
 
     final image = Transform.rotate(
       angle: rotate,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Container(
-            width: 118,
-            height: 102,
-            decoration: BoxDecoration(
-              color: style.paperColor,
-              borderRadius: BorderRadius.circular(style.roundPhoto ? 18 : 8),
-              boxShadow: [
-                BoxShadow(
-                  color: style.shadowColor,
-                  blurRadius: 10,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(style.roundPhoto ? 16 : 6),
-              child: imageProvider != null
-                  ? Image(
-                      image: imageProvider!,
-                      fit: BoxFit.cover,
-                      gaplessPlayback: true,
-                      filterQuality: FilterQuality.low,
-                    )
-                  : Container(
-                      color: style.paperColor,
-                      alignment: Alignment.center,
-                      child: Icon(Icons.photo_outlined, color: style.inkColor),
-                    ),
+          GestureDetector(
+            onTap: () => openImageViewer(context, record.imagePaths),
+            child: Container(
+              width: 118,
+              height: 102,
+              decoration: BoxDecoration(
+                color: style.paperColor,
+                borderRadius: BorderRadius.circular(style.roundPhoto ? 18 : 8),
+                boxShadow: [
+                  BoxShadow(
+                    color: style.shadowColor,
+                    blurRadius: 10,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(style.roundPhoto ? 16 : 6),
+                child: imageProvider != null
+                    ? Image(
+                        image: imageProvider!,
+                        fit: BoxFit.cover,
+                        gaplessPlayback: true,
+                        filterQuality: FilterQuality.low,
+                      )
+                    : Container(
+                        color: style.paperColor,
+                        alignment: Alignment.center,
+                        child: Icon(Icons.photo_outlined, color: style.inkColor),
+                      ),
+              ),
             ),
           ),
+          if (extraCount > 0)
+            Positioned(
+              right: 4,
+              bottom: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: style.inkColor.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '+$extraCount',
+                  style: TextStyle(
+                    color: style.paperColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
           if (style.useTape)
             Positioned(
               top: -10,
