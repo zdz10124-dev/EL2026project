@@ -18,7 +18,7 @@ import '../models/meal_record.dart';
 import '../models/style_presets.dart';
 import '../services/meal_repository.dart';
 import '../widgets/image_viewer.dart';
-import '../widgets/themed_page_background.dart';
+import '../widgets/themed_subpage_scaffold.dart';
 
 class OptimizedJournalNotebookPage extends StatefulWidget {
   const OptimizedJournalNotebookPage({
@@ -66,8 +66,7 @@ class _OptimizedJournalNotebookPageState
     final canGoPrev = _pageIndex > 0;
     final canGoNext = _pageIndex < _pages.length - 1;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
+    return ThemedSubpageScaffold(
       appBar: AppBar(
         title: Text('美食日记 · ${widget.style.name}'),
         actions: [
@@ -75,67 +74,63 @@ class _OptimizedJournalNotebookPageState
             enabled: !_exporting,
             onSelected: _handleExportAction,
             itemBuilder: (context) => const [
-              PopupMenuItem<String>(
-                value: 'share_image',
-                child: Text('分享长图'),
-              ),
-              PopupMenuItem<String>(
-                value: 'share_pdf',
-                child: Text('分享 PDF'),
-              ),
+              PopupMenuItem<String>(value: 'share_image', child: Text('分享长图')),
+              PopupMenuItem<String>(value: 'share_pdf', child: Text('分享 PDF')),
             ],
           ),
         ],
       ),
-      body: ThemedPageBackground(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Expanded(
-                child: Stack(
-                  children: [
-                    for (final pageIndex in _renderedPageIndexes)
-                      Offstage(
-                        offstage: pageIndex != _pageIndex,
-                        child: RepaintBoundary(
-                          key: _pageKeys[pageIndex],
-                          child: _PageSurface(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  for (final pageIndex in _renderedPageIndexes)
+                    Offstage(
+                      offstage: pageIndex != _pageIndex,
+                      child: RepaintBoundary(
+                        key: _pageKeys[pageIndex],
+                        child: _PageSurface(
+                          style: widget.style,
+                          child: _NotebookPage(
+                            pageNumber: pageIndex + 1,
+                            pageData: _pages[pageIndex],
                             style: widget.style,
-                            child: _NotebookPage(
-                              pageNumber: pageIndex + 1,
-                              pageData: _pages[pageIndex],
-                              style: widget.style,
-                              imageProviders: _imageProviderCache,
-                            ),
+                            imageProviders: _imageProviderCache,
                           ),
                         ),
                       ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    onPressed: canGoPrev ? () => _changePage(_pageIndex - 1) : null,
-                    icon: const Icon(Icons.arrow_back_ios_rounded),
-                  ),
-                  Text('第 ${_pageIndex + 1} / ${_pages.length} 页'),
-                  IconButton(
-                    onPressed: canGoNext ? () => _changePage(_pageIndex + 1) : null,
-                    icon: const Icon(Icons.arrow_forward_ios_rounded),
-                  ),
+                    ),
                 ],
               ),
-              if (_exporting)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: LinearProgressIndicator(),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  onPressed: canGoPrev
+                      ? () => _changePage(_pageIndex - 1)
+                      : null,
+                  icon: const Icon(Icons.arrow_back_ios_rounded),
                 ),
-            ],
-          ),
+                Text('第 ${_pageIndex + 1} / ${_pages.length} 页'),
+                IconButton(
+                  onPressed: canGoNext
+                      ? () => _changePage(_pageIndex + 1)
+                      : null,
+                  icon: const Icon(Icons.arrow_forward_ios_rounded),
+                ),
+              ],
+            ),
+            if (_exporting)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(),
+              ),
+          ],
         ),
       ),
     );
@@ -223,7 +218,9 @@ class _OptimizedJournalNotebookPageState
     final stitchedBytes = _stitchImagesVertically(pageBytes);
     final exportDir = await _resolveExportDirectory();
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final file = File(path.join(exportDir.path, 'food_journal_full_$timestamp.png'));
+    final file = File(
+      path.join(exportDir.path, 'food_journal_full_$timestamp.png'),
+    );
     await file.writeAsBytes(stitchedBytes, flush: true);
     return file;
   }
@@ -232,17 +229,16 @@ class _OptimizedJournalNotebookPageState
     final pageBytes = await _captureAllPagePngs();
     final exportDir = await _resolveExportDirectory();
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final file = File(path.join(exportDir.path, 'food_journal_full_$timestamp.pdf'));
+    final file = File(
+      path.join(exportDir.path, 'food_journal_full_$timestamp.pdf'),
+    );
     final document = pw.Document();
     for (final bytes in pageBytes) {
       document.addPage(
         pw.Page(
           pageFormat: PdfPageFormat.a4,
           build: (_) => pw.Center(
-            child: pw.Image(
-              pw.MemoryImage(bytes),
-              fit: pw.BoxFit.contain,
-            ),
+            child: pw.Image(pw.MemoryImage(bytes), fit: pw.BoxFit.contain),
           ),
         ),
       );
@@ -301,11 +297,7 @@ class _OptimizedJournalNotebookPageState
   ImageProvider _imageProviderFor(String imagePath) {
     return _imageProviderCache.putIfAbsent(
       imagePath,
-      () => ResizeImage.resizeIfNeeded(
-        420,
-        360,
-        FileImage(File(imagePath)),
-      ),
+      () => ResizeImage.resizeIfNeeded(420, 360, FileImage(File(imagePath))),
     );
   }
 
@@ -329,7 +321,8 @@ class _OptimizedJournalNotebookPageState
   Future<void> _waitForPaintStable(int pageIndex) async {
     for (var attempt = 0; attempt < 10; attempt++) {
       await _waitForNextFrame();
-      final renderObject = _pageKeys[pageIndex].currentContext?.findRenderObject();
+      final renderObject = _pageKeys[pageIndex].currentContext
+          ?.findRenderObject();
       if (renderObject case final RenderRepaintBoundary boundary
           when !boundary.debugNeedsPaint) {
         await Future<void>.delayed(const Duration(milliseconds: 16));
@@ -348,7 +341,10 @@ class _OptimizedJournalNotebookPageState
       throw StateError('没有可用于拼接的页面');
     }
 
-    final width = decoded.fold<int>(0, (value, image) => max(value, image.width));
+    final width = decoded.fold<int>(
+      0,
+      (value, image) => max(value, image.width),
+    );
     final height = decoded.fold<int>(0, (value, image) => value + image.height);
     final canvas = img.Image(width: width, height: height);
     img.fill(canvas, color: img.ColorRgb8(255, 255, 255));
@@ -371,8 +367,9 @@ class _OptimizedJournalNotebookPageState
       baseDirectory = null;
     }
     baseDirectory ??= await getApplicationDocumentsDirectory();
-    final exportDirectory =
-        Directory(path.join(baseDirectory.path, 'journal_exports'));
+    final exportDirectory = Directory(
+      path.join(baseDirectory.path, 'journal_exports'),
+    );
     if (!await exportDirectory.exists()) {
       await exportDirectory.create(recursive: true);
     }
@@ -400,9 +397,9 @@ class _OptimizedJournalNotebookPageState
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   List<_NotebookPageData> _buildPages(List<JournalEntry> entries) {
@@ -428,7 +425,8 @@ class _OptimizedJournalNotebookPageState
       while (cursor < flat.length && chunk.length < 4) {
         final nextItem = flat[cursor];
         final estimatedHeight = _estimateItemHeight(nextItem);
-        if (chunk.isNotEmpty && usedHeight + estimatedHeight > _pageContentMaxHeight) {
+        if (chunk.isNotEmpty &&
+            usedHeight + estimatedHeight > _pageContentMaxHeight) {
           break;
         }
         chunk.add(nextItem);
@@ -450,7 +448,8 @@ class _OptimizedJournalNotebookPageState
           items: List<_NotebookItem>.unmodifiable(chunk),
           imagePaths: {
             for (final item in chunk)
-              if (item.record.imagePath.trim().isNotEmpty) item.record.imagePath,
+              if (item.record.imagePath.trim().isNotEmpty)
+                item.record.imagePath,
           },
         ),
       );
@@ -458,7 +457,9 @@ class _OptimizedJournalNotebookPageState
     }
 
     return pages.isEmpty
-        ? const [_NotebookPageData(items: <_NotebookItem>[], imagePaths: <String>{})]
+        ? const [
+            _NotebookPageData(items: <_NotebookItem>[], imagePaths: <String>{}),
+          ]
         : pages;
   }
 
@@ -488,10 +489,7 @@ class _OptimizedJournalNotebookPageState
 }
 
 class _NotebookPageData {
-  const _NotebookPageData({
-    required this.items,
-    required this.imagePaths,
-  });
+  const _NotebookPageData({required this.items, required this.imagePaths});
 
   final List<_NotebookItem> items;
   final Set<String> imagePaths;
@@ -526,10 +524,7 @@ class _NotebookItem {
 }
 
 class _PageSurface extends StatelessWidget {
-  const _PageSurface({
-    required this.style,
-    required this.child,
-  });
+  const _PageSurface({required this.style, required this.child});
 
   final DiaryStyleSpec style;
   final Widget child;
@@ -709,7 +704,10 @@ class _NotebookRecordCard extends StatelessWidget {
                     : Container(
                         color: style.paperColor,
                         alignment: Alignment.center,
-                        child: Icon(Icons.photo_outlined, color: style.inkColor),
+                        child: Icon(
+                          Icons.photo_outlined,
+                          color: style.inkColor,
+                        ),
                       ),
               ),
             ),
@@ -761,9 +759,9 @@ class _NotebookRecordCard extends StatelessWidget {
           if (dishText.isNotEmpty)
             Text(
               dishText,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: style.inkColor,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(color: style.inkColor),
             ),
           if (dishText.isNotEmpty && locationText.isNotEmpty)
             const SizedBox(height: 6),
@@ -773,9 +771,7 @@ class _NotebookRecordCard extends StatelessWidget {
             const SizedBox(height: 4),
           Text(
             DateFormat('HH:mm').format(record.createdAt),
-            style: TextStyle(
-              color: style.inkColor.withValues(alpha: 0.72),
-            ),
+            style: TextStyle(color: style.inkColor.withValues(alpha: 0.72)),
           ),
         ],
       ),
@@ -788,9 +784,9 @@ class _NotebookRecordCard extends StatelessWidget {
           Text(
             DateFormat('yyyy/MM/dd').format(item.journalDay),
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: style.inkColor,
-                  fontWeight: FontWeight.w600,
-                ),
+              color: style.inkColor,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           if (style.useDivider) ...[
             const SizedBox(height: 4),

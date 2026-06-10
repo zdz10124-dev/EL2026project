@@ -4,6 +4,7 @@ import '../models/food_diary.dart';
 import '../services/agent_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/section_card.dart';
+import '../widgets/themed_subpage_scaffold.dart';
 
 class DiaryScreen extends StatefulWidget {
   const DiaryScreen({
@@ -60,9 +61,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
         return r.createdAt.isAfter(
               _dateRange.start.subtract(const Duration(days: 1)),
             ) &&
-            r.createdAt.isBefore(
-              _dateRange.end.add(const Duration(days: 1)),
-            );
+            r.createdAt.isBefore(_dateRange.end.add(const Duration(days: 1)));
       }).toList();
 
       if (filtered.isEmpty) {
@@ -74,8 +73,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
 
       final diary = await widget.agentService.generateFoodDiary(
         records: filtered,
-        startDate:
-            '${_dateRange.start.month}/${_dateRange.start.day}',
+        startDate: '${_dateRange.start.month}/${_dateRange.start.day}',
         endDate: '${_dateRange.end.month}/${_dateRange.end.day}',
       );
 
@@ -100,8 +98,10 @@ class _DiaryScreenState extends State<DiaryScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('AI 未配置'),
-        content: const Text('AI 功能需要先在设置中配置模型。\n\n'
-            '请前往「设置 → 智能功能 → AI 模型配置」完成设置。'),
+        content: const Text(
+          'AI 功能需要先在设置中配置模型。\n\n'
+          '请前往「设置 → 智能功能 → AI 模型配置」完成设置。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
@@ -117,7 +117,9 @@ class _DiaryScreenState extends State<DiaryScreen> {
     if (text.contains('未配置') || text.contains('not configured')) {
       return 'AI 还没有配置好，请先到设置页完成配置。';
     }
-    if (text.contains('401') || text.contains('403') || text.contains('invalid')) {
+    if (text.contains('401') ||
+        text.contains('403') ||
+        text.contains('invalid')) {
       return 'AI 配置似乎无效，请检查密钥、模型或服务端配置。';
     }
     if (text.contains('timeout') || text.contains('timed out')) {
@@ -136,9 +138,9 @@ class _DiaryScreenState extends State<DiaryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ThemedSubpageScaffold(
       appBar: AppBar(title: const Text('美食日记')),
-      body: ListView(
+      child: ListView(
         padding: const EdgeInsets.all(20),
         children: [
           // 日期范围选择
@@ -156,15 +158,16 @@ class _DiaryScreenState extends State<DiaryScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('选择日期范围',
-                              style: TextStyle(fontSize: 13)),
+                          const Text('选择日期范围', style: TextStyle(fontSize: 13)),
                           const SizedBox(height: 2),
                           Text(
                             '${_dateRange.start.month}/${_dateRange.start.day} '
                             '- '
                             '${_dateRange.end.month}/${_dateRange.end.day}',
                             style: const TextStyle(
-                                fontWeight: FontWeight.w600, fontSize: 15),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
                           ),
                         ],
                       ),
@@ -187,7 +190,9 @@ class _DiaryScreenState extends State<DiaryScreen> {
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : const Icon(Icons.auto_stories),
               label: Text(_generating ? 'AI 正在创作...' : '生成美食日记'),
@@ -200,10 +205,9 @@ class _DiaryScreenState extends State<DiaryScreen> {
             // 标题
             Text(
               _diary!.title,
-              style: Theme.of(context)
-                  .textTheme
-                  .headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.bold),
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
             Text(
@@ -235,14 +239,19 @@ class _DiaryScreenState extends State<DiaryScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.auto_awesome,
-                              size: 16, color: Colors.amber),
+                          const Icon(
+                            Icons.auto_awesome,
+                            size: 16,
+                            color: Colors.amber,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               _diary!.summary!,
                               style: const TextStyle(
-                                  fontSize: 13, color: Colors.brown),
+                                fontSize: 13,
+                                color: Colors.brown,
+                              ),
                             ),
                           ),
                         ],
@@ -258,8 +267,11 @@ class _DiaryScreenState extends State<DiaryScreen> {
                 padding: const EdgeInsets.only(top: 60),
                 child: Column(
                   children: [
-                    Icon(Icons.auto_stories_outlined,
-                        size: 64, color: Colors.grey.shade300),
+                    Icon(
+                      Icons.auto_stories_outlined,
+                      size: 64,
+                      color: Colors.grey.shade300,
+                    ),
                     const SizedBox(height: 16),
                     Text(
                       '选择日期范围，点击生成按钮',
@@ -269,7 +281,9 @@ class _DiaryScreenState extends State<DiaryScreen> {
                     Text(
                       'AI 会为这段时间的用餐记录创作一篇温暖的日记',
                       style: TextStyle(
-                          color: Colors.grey.shade400, fontSize: 12),
+                        color: Colors.grey.shade400,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),

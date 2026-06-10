@@ -9,6 +9,7 @@ import '../services/location_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/section_card.dart';
 import '../widgets/themed_page_background.dart';
+import '../widgets/themed_subpage_scaffold.dart';
 
 class NetworkRecommendationPage extends StatefulWidget {
   const NetworkRecommendationPage({super.key, required this.repository});
@@ -55,8 +56,7 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
+    return ThemedSubpageScaffold(
       appBar: AppBar(
         title: const Text('联网推荐'),
         actions: [
@@ -67,85 +67,81 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
           ),
         ],
       ),
-      body: ThemedPageBackground(
-        child: RefreshIndicator(
-          onRefresh: () => _loadRecommendations(refresh: true),
-          child: ListView(
-            controller: _scrollController,
-            padding: const EdgeInsets.all(20),
-            children: [
-              _buildLocationBanner(context),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  _FilterChipButton(
-                    label: '距离',
-                    valueText: _distanceBucket?.label ?? '不限',
-                    onTap: _showDistanceSelector,
-                  ),
-                  _FilterChipButton(
-                    label: '价格区间',
-                    valueText: _priceBuckets.isEmpty
-                        ? '不限'
-                        : _priceBuckets.map((item) => item.label).join(' / '),
-                    onTap: _showPriceSelector,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              if (_loading)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 48),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              else if (_errorText != null)
-                SectionCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(_errorText!),
-                      const SizedBox(height: 12),
-                      FilledButton(
-                        onPressed: () => _loadRecommendations(refresh: true),
-                        child: const Text('重试'),
-                      ),
-                    ],
-                  ),
-                )
-              else if (_items.isEmpty)
-                const SectionCard(
-                  child: Text('当前没有符合条件的记录。可以尝试清空筛选条件，或者稍后再来看看。'),
-                )
-              else ...[
-                ..._items.map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _RecommendationListCard(
-                      item: item,
-                      repository: widget.repository,
-                      detailCache: _detailCache,
-                      onVote: _handleVote,
-                      onReport: _handleReport,
+      child: RefreshIndicator(
+        onRefresh: () => _loadRecommendations(refresh: true),
+        child: ListView(
+          controller: _scrollController,
+          padding: const EdgeInsets.all(20),
+          children: [
+            _buildLocationBanner(context),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _FilterChipButton(
+                  label: '距离',
+                  valueText: _distanceBucket?.label ?? '不限',
+                  onTap: _showDistanceSelector,
+                ),
+                _FilterChipButton(
+                  label: '价格区间',
+                  valueText: _priceBuckets.isEmpty
+                      ? '不限'
+                      : _priceBuckets.map((item) => item.label).join(' / '),
+                  onTap: _showPriceSelector,
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            if (_loading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 48),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (_errorText != null)
+              SectionCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_errorText!),
+                    const SizedBox(height: 12),
+                    FilledButton(
+                      onPressed: () => _loadRecommendations(refresh: true),
+                      child: const Text('重试'),
                     ),
+                  ],
+                ),
+              )
+            else if (_items.isEmpty)
+              const SectionCard(child: Text('当前没有符合条件的记录。可以尝试清空筛选条件，或者稍后再来看看。'))
+            else ...[
+              ..._items.map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _RecommendationListCard(
+                    item: item,
+                    repository: widget.repository,
+                    detailCache: _detailCache,
+                    onVote: _handleVote,
+                    onReport: _handleReport,
                   ),
                 ),
-                if (_loadingMore)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                if (!_loadingMore && _items.length < _total)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Center(child: Text('继续下滑加载更多')),
-                  ),
-              ],
+              ),
+              if (_loadingMore)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              if (!_loadingMore && _items.length < _total)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Center(child: Text('继续下滑加载更多')),
+                ),
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -171,7 +167,8 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
   }
 
   Future<void> _bootstrap() async {
-    _distanceBucket ??= await widget.repository.getSavedRecommendationDistanceBucket();
+    _distanceBucket ??= await widget.repository
+        .getSavedRecommendationDistanceBucket();
     if (!mounted) return;
     if (_distanceBucket != null && _locationResult == null) {
       _resolveLocation().timeout(const Duration(seconds: 8)).catchError((_) {});
@@ -258,8 +255,10 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
     final text = error.toString().toLowerCase();
     if (text.contains('timeout') || text.contains('timed out'))
       return '联网推荐服务响应超时，请检查网络后重试。';
-    if (text.contains('socket') || text.contains('failed host lookup') ||
-        text.contains('connection') || text.contains('network'))
+    if (text.contains('socket') ||
+        text.contains('failed host lookup') ||
+        text.contains('connection') ||
+        text.contains('network'))
       return '无法连接联网推荐服务，请检查网络后重试。';
     return '加载推荐失败，请稍后重试。';
   }
@@ -287,16 +286,19 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
 
   Future<void> _showDistanceSelector() async {
     final result =
-        await showModalBottomSheet<_SingleChoiceResult<RecommendationDistanceBucket>>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => _SingleChoiceSelectorSheet<RecommendationDistanceBucket>(
-        title: '距离筛选',
-        options: RecommendationDistanceBucket.values,
-        selected: _distanceBucket,
-        labelBuilder: (item) => item.label,
-      ),
-    );
+        await showModalBottomSheet<
+          _SingleChoiceResult<RecommendationDistanceBucket>
+        >(
+          context: context,
+          showDragHandle: true,
+          builder: (context) =>
+              _SingleChoiceSelectorSheet<RecommendationDistanceBucket>(
+                title: '距离筛选',
+                options: RecommendationDistanceBucket.values,
+                selected: _distanceBucket,
+                labelBuilder: (item) => item.label,
+              ),
+        );
     if (result == null) {
       return;
     }
@@ -311,15 +313,16 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
   Future<void> _showPriceSelector() async {
     final selected =
         await showModalBottomSheet<List<RecommendationPriceBucket>>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => _MultiChoiceSelectorSheet<RecommendationPriceBucket>(
-        title: '价格区间',
-        options: RecommendationPriceBucket.values,
-        initialSelected: _priceBuckets,
-        labelBuilder: (item) => item.label,
-      ),
-    );
+          context: context,
+          showDragHandle: true,
+          builder: (context) =>
+              _MultiChoiceSelectorSheet<RecommendationPriceBucket>(
+                title: '价格区间',
+                options: RecommendationPriceBucket.values,
+                initialSelected: _priceBuckets,
+                labelBuilder: (item) => item.label,
+              ),
+        );
     if (selected == null) {
       return;
     }
@@ -378,9 +381,9 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
       }
       if (result.feedback.isHidden) {
         _removeItem(item.id);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('这条推荐已被系统下架。')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('这条推荐已被系统下架。')));
         return;
       }
       _replaceItem(item.copyWith(feedback: result.feedback));
@@ -389,9 +392,9 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
         return;
       }
       _replaceItem(previousItem);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('操作失败：$error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('操作失败：$error')));
     }
   }
 
@@ -411,9 +414,9 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
       }
       if (result.feedback.isHidden) {
         _removeItem(item.id);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('举报达到阈值，这条推荐已下架。')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('举报达到阈值，这条推荐已下架。')));
         return;
       }
       _replaceItem(item.copyWith(feedback: result.feedback));
@@ -422,9 +425,9 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
         return;
       }
       _replaceItem(previousItem);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('举报失败：$error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('举报失败：$error')));
     }
   }
 
@@ -436,8 +439,9 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
     });
     final cachedDetail = _detailCache[nextItem.id];
     if (cachedDetail != null) {
-      _detailCache[nextItem.id] =
-          cachedDetail.copyWith(feedback: nextItem.feedback);
+      _detailCache[nextItem.id] = cachedDetail.copyWith(
+        feedback: nextItem.feedback,
+      );
     }
     _persistPageCache();
   }
@@ -510,10 +514,9 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
     }
 
     if (_errorText != null && _detail == null) {
-      return Scaffold(
-        backgroundColor: Colors.transparent,
+      return ThemedSubpageScaffold(
         appBar: AppBar(title: const Text('推荐详情')),
-        body: Padding(
+        child: Padding(
           padding: const EdgeInsets.all(20),
           child: SectionCard(
             child: Column(
@@ -533,116 +536,112 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
     }
 
     final item = _detail!;
-    return Scaffold(
-      backgroundColor: Colors.transparent,
+    return ThemedSubpageScaffold(
       appBar: AppBar(title: Text(item.dishName)),
-      body: ThemedPageBackground(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            if (item.imageUrl != null && item.imageUrl!.isNotEmpty)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: Image.network(
-                  item.imageUrl!,
-                  height: 220,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) =>
-                      _DetailPlaceholderTitle(title: item.dishName),
-                ),
-              )
-            else
-              _DetailPlaceholderTitle(title: item.dishName),
-            const SizedBox(height: 18),
-            Text(
-              item.dishName,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            Text(item.location),
-            const SizedBox(height: 8),
-            Text('价格：${item.price?.toStringAsFixed(1) ?? '未填写'}'),
-            const SizedBox(height: 8),
-            Text('评分：${item.rating?.toStringAsFixed(1) ?? '未打分'}'),
-            const SizedBox(height: 8),
-            Text('记录时间：${DateFormat('yyyy/MM/dd HH:mm').format(item.createdAt)}'),
-            if (item.distanceMeters != null) ...[
-              const SizedBox(height: 8),
-              Text('距离你约：${RecommendationDetailPage.formatDistance(item.distanceMeters!)}'),
-            ],
-            if (item.uploaderName?.isNotEmpty == true) ...[
-              const SizedBox(height: 8),
-              Text(
-                '发布者：${item.uploaderAvatar ?? '🍜'} ${item.uploaderName}',
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          if (item.imageUrl != null && item.imageUrl!.isNotEmpty)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Image.network(
+                item.imageUrl!,
+                height: 220,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) =>
+                    _DetailPlaceholderTitle(title: item.dishName),
               ),
-            ],
-            const SizedBox(height: 18),
-            const Text('推荐理由'),
+            )
+          else
+            _DetailPlaceholderTitle(title: item.dishName),
+          const SizedBox(height: 18),
+          Text(item.dishName, style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          Text(item.location),
+          const SizedBox(height: 8),
+          Text('价格：${item.price?.toStringAsFixed(1) ?? '未填写'}'),
+          const SizedBox(height: 8),
+          Text('评分：${item.rating?.toStringAsFixed(1) ?? '未打分'}'),
+          const SizedBox(height: 8),
+          Text('记录时间：${DateFormat('yyyy/MM/dd HH:mm').format(item.createdAt)}'),
+          if (item.distanceMeters != null) ...[
             const SizedBox(height: 8),
             Text(
-              item.reason?.isNotEmpty == true
-                  ? item.reason!
-                  : '这道菜在当前筛选条件下更容易被推荐到这里。',
-            ),
-            const SizedBox(height: 18),
-            const Text('菜品描述'),
-            const SizedBox(height: 8),
-            Text(item.description?.trim().isNotEmpty == true ? item.description! : '发布者暂时没有补充描述。'),
-            const SizedBox(height: 14),
-            _RecommendationFeedbackBar(
-              upvoteCount: item.feedback.upvoteCount,
-              downvoteCount: item.feedback.downvoteCount,
-              reportCount: item.feedback.reportCount,
-              currentVote: item.feedback.currentVote,
-              currentReported: item.feedback.currentReported,
-              onVote: _handleVote,
-              onReport: _handleReport,
-            ),
-            const SizedBox(height: 18),
-            const Text('评论'),
-            const SizedBox(height: 8),
-            _CommentComposer(
-              controller: _commentController,
-              busy: _submittingComment,
-              onSubmit: _submitComment,
-            ),
-            const SizedBox(height: 12),
-            if (item.comments.isEmpty)
-              const SectionCard(
-                child: Text('还没有评论，写下第一条吧。'),
-              )
-            else
-              ...item.comments.map(
-                (comment) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _CommentCard(comment: comment),
-                ),
-              ),
-            const SizedBox(height: 18),
-            const Text('同菜品聚合统计'),
-            const SizedBox(height: 8),
-            SectionCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('公开记录数：${item.aggregate.uploadCount}'),
-                  const SizedBox(height: 6),
-                  Text(
-                    '平均评分：${item.aggregate.averageRating?.toStringAsFixed(1) ?? '暂无'}',
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '平均价格：${item.aggregate.averagePrice?.toStringAsFixed(1) ?? '暂无'}',
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '最近记录：${DateFormat('yyyy/MM/dd HH:mm').format(item.aggregate.latestRecordedAt)}',
-                  ),
-                ],
-              ),
+              '距离你约：${RecommendationDetailPage.formatDistance(item.distanceMeters!)}',
             ),
           ],
-        ),
+          if (item.uploaderName?.isNotEmpty == true) ...[
+            const SizedBox(height: 8),
+            Text('发布者：${item.uploaderAvatar ?? '🍜'} ${item.uploaderName}'),
+          ],
+          const SizedBox(height: 18),
+          const Text('推荐理由'),
+          const SizedBox(height: 8),
+          Text(
+            item.reason?.isNotEmpty == true
+                ? item.reason!
+                : '这道菜在当前筛选条件下更容易被推荐到这里。',
+          ),
+          const SizedBox(height: 18),
+          const Text('菜品描述'),
+          const SizedBox(height: 8),
+          Text(
+            item.description?.trim().isNotEmpty == true
+                ? item.description!
+                : '发布者暂时没有补充描述。',
+          ),
+          const SizedBox(height: 14),
+          _RecommendationFeedbackBar(
+            upvoteCount: item.feedback.upvoteCount,
+            downvoteCount: item.feedback.downvoteCount,
+            reportCount: item.feedback.reportCount,
+            currentVote: item.feedback.currentVote,
+            currentReported: item.feedback.currentReported,
+            onVote: _handleVote,
+            onReport: _handleReport,
+          ),
+          const SizedBox(height: 18),
+          const Text('评论'),
+          const SizedBox(height: 8),
+          _CommentComposer(
+            controller: _commentController,
+            busy: _submittingComment,
+            onSubmit: _submitComment,
+          ),
+          const SizedBox(height: 12),
+          if (item.comments.isEmpty)
+            const SectionCard(child: Text('还没有评论，写下第一条吧。'))
+          else
+            ...item.comments.map(
+              (comment) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _CommentCard(comment: comment),
+              ),
+            ),
+          const SizedBox(height: 18),
+          const Text('同菜品聚合统计'),
+          const SizedBox(height: 8),
+          SectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('公开记录数：${item.aggregate.uploadCount}'),
+                const SizedBox(height: 6),
+                Text(
+                  '平均评分：${item.aggregate.averageRating?.toStringAsFixed(1) ?? '暂无'}',
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '平均价格：${item.aggregate.averagePrice?.toStringAsFixed(1) ?? '暂无'}',
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '最近记录：${DateFormat('yyyy/MM/dd HH:mm').format(item.aggregate.latestRecordedAt)}',
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -655,7 +654,9 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
       });
     }
     try {
-      final detail = await widget.repository.fetchRecommendationDetail(widget.itemId);
+      final detail = await widget.repository.fetchRecommendationDetail(
+        widget.itemId,
+      );
       if (!mounted) {
         return;
       }
@@ -704,9 +705,9 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
         return;
       }
       setState(() => _submittingComment = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('评论失败：$error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('评论失败：$error')));
     }
   }
 
@@ -730,9 +731,9 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
         return;
       }
       if (result.feedback.isHidden) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('这条推荐已被系统下架。')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('这条推荐已被系统下架。')));
         Navigator.of(context).pop();
         return;
       }
@@ -744,9 +745,9 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
         return;
       }
       setState(() => _detail = previous);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('操作失败：$error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('操作失败：$error')));
     }
   }
 
@@ -769,9 +770,9 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
         return;
       }
       if (result.feedback.isHidden) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('举报达到阈值，这条推荐已下架。')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('举报达到阈值，这条推荐已下架。')));
         Navigator.of(context).pop();
         return;
       }
@@ -783,9 +784,9 @@ class _RecommendationDetailPageState extends State<RecommendationDetailPage> {
         return;
       }
       setState(() => _detail = previous);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('举报失败：$error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('举报失败：$error')));
     }
   }
 }
@@ -825,7 +826,9 @@ class _RecommendationListCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(item.location),
             const SizedBox(height: 6),
-            Text('价格 ${item.price.toStringAsFixed(1)} · 评分 ${item.rating.toStringAsFixed(1)}'),
+            Text(
+              '价格 ${item.price.toStringAsFixed(1)} · 评分 ${item.rating.toStringAsFixed(1)}',
+            ),
             if (item.distanceMeters != null) ...[
               const SizedBox(height: 6),
               Text(
@@ -849,9 +852,9 @@ class _RecommendationListCard extends StatelessWidget {
             Text(
               '点击查看详情',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 10),
             _RecommendationFeedbackBar(
@@ -890,9 +893,7 @@ class _CommentComposer extends StatelessWidget {
             controller: controller,
             minLines: 1,
             maxLines: 3,
-            decoration: const InputDecoration(
-              hintText: '写下你的看法...',
-            ),
+            decoration: const InputDecoration(hintText: '写下你的看法...'),
           ),
         ),
         const SizedBox(width: 10),
@@ -919,9 +920,7 @@ class _CommentCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(
-                child: Text(comment.authorAvatar),
-              ),
+              CircleAvatar(child: Text(comment.authorAvatar)),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -1001,9 +1000,7 @@ class _RecommendationFeedbackBar extends StatelessWidget {
           avatar: Icon(
             Icons.flag_outlined,
             size: 18,
-            color: currentReported
-                ? Theme.of(context).colorScheme.error
-                : null,
+            color: currentReported ? Theme.of(context).colorScheme.error : null,
           ),
           label: Text('举报 $reportCount'),
           onPressed: onReport,
@@ -1031,10 +1028,9 @@ class _DetailPlaceholderTitle extends StatelessWidget {
       alignment: Alignment.center,
       child: Text(
         title,
-        style: Theme.of(context)
-            .textTheme
-            .headlineMedium
-            ?.copyWith(color: Colors.white),
+        style: Theme.of(
+          context,
+        ).textTheme.headlineMedium?.copyWith(color: Colors.white),
         textAlign: TextAlign.center,
       ),
     );
@@ -1117,8 +1113,9 @@ class _SingleChoiceSelectorSheetState<T>
             Align(
               alignment: Alignment.centerRight,
               child: FilledButton(
-                onPressed: () => Navigator.of(context)
-                    .pop(_SingleChoiceResult<T>(value: _selected)),
+                onPressed: () => Navigator.of(
+                  context,
+                ).pop(_SingleChoiceResult<T>(value: _selected)),
                 child: const Text('完成'),
               ),
             ),
@@ -1164,10 +1161,7 @@ class _SingleChoiceOptionTile extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                label,
-                style: TextStyle(color: color),
-              ),
+              child: Text(label, style: TextStyle(color: color)),
             ),
           ],
         ),
@@ -1234,7 +1228,8 @@ class _MultiChoiceSelectorSheetState<T>
                 ),
                 const Spacer(),
                 FilledButton(
-                  onPressed: () => Navigator.of(context).pop(_selected.toList()),
+                  onPressed: () =>
+                      Navigator.of(context).pop(_selected.toList()),
                   child: const Text('完成'),
                 ),
               ],
