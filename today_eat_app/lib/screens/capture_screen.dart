@@ -13,6 +13,7 @@ import '../services/location_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/rating_stars.dart';
 import '../widgets/section_card.dart';
+import '../widgets/image_viewer.dart';
 import '../widgets/themed_page_background.dart';
 
 class CaptureScreen extends StatefulWidget {
@@ -97,8 +98,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
                     const SizedBox(width: 20),
                     _SquareActionButton(
                       size: layout.secondaryActionSize,
-                      icon: Icons.image_outlined,
-                      onPressed: _busy ? null : () => _openEditor(fromCamera: false),
+                      icon: Icons.collections_outlined,
+                      onPressed: _busy ? null : () => _openEditor(fromCamera: false, multi: true),
                     ),
                   ],
                 ),
@@ -158,31 +159,39 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
-  Future<void> _openEditor({required bool fromCamera}) async {
+  Future<void> _openEditor({required bool fromCamera, bool multi = false}) async {
     widget.repository.clearDraft();
     setState(() => _busy = true);
-    final XFile? file = fromCamera
-        ? await widget.repository.captureFromCamera()
-        : await widget.repository.pickFromGallery();
-    if (mounted) {
-      setState(() => _busy = false);
-    }
-    if (!mounted || file == null) {
-      return;
-    }
+    try {
+      final List<String> paths;
+      if (fromCamera) {
+        final file = await widget.repository.captureFromCamera();
+        paths = file != null ? [file.path] : [];
+      } else if (multi) {
+        final files = await widget.repository.pickMultiFromGallery();
+        paths = files.map((f) => f.path).toList();
+      } else {
+        final file = await widget.repository.pickFromGallery();
+        paths = file != null ? [file.path] : [];
+      }
+      if (mounted) setState(() => _busy = false);
+      if (!mounted || paths.isEmpty) return;
 
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => EditMealScreen(
-          config: widget.config,
-          repository: widget.repository,
-          agentService: widget.agentService,
-          imagePath: file.path,
-          fromCamera: fromCamera,
-          initialDraft: MealDraft.empty(),
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (context) => EditMealScreen(
+            config: widget.config,
+            repository: widget.repository,
+            agentService: widget.agentService,
+            imagePaths: paths,
+            fromCamera: fromCamera,
+            initialDraft: MealDraft.empty(),
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _editRecord(MealRecord record) async {
@@ -192,7 +201,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
           config: widget.config,
           repository: widget.repository,
           agentService: widget.agentService,
-          imagePath: record.imagePath,
+          imagePaths: record.imagePaths,
           fromCamera: false,
           initialDraft: MealDraft(
             dishName: record.dishName == '未填写' ? '' : record.dishName,
@@ -278,7 +287,7 @@ class EditMealScreen extends StatefulWidget {
     super.key,
     required this.config,
     required this.repository,
-    required this.imagePath,
+    required this.imagePaths,
     required this.fromCamera,
     required this.initialDraft,
     this.agentService,
@@ -287,7 +296,7 @@ class EditMealScreen extends StatefulWidget {
 
   final UiConfig config;
   final MealRepository repository;
-  final String imagePath;
+  final List<String> imagePaths;
   final bool fromCamera;
   final MealDraft initialDraft;
   final AgentService? agentService;
@@ -299,16 +308,19 @@ class EditMealScreen extends StatefulWidget {
 
 class _EditMealScreenState extends State<EditMealScreen> {
   final LocationService _locationService = LocationService();
+  final PageController _pageController = PageController();
   late final TextEditingController _dishController;
   late final TextEditingController _locationController;
   late final TextEditingController _priceController;
   late final TextEditingController _commentController;
-  late String _imagePath;
+  late List<String> _imagePaths;
+  int _currentImageIndex = 0;
   late double _ratingValue;
   bool _ratingTouched = false;
   bool _saving = false;
   bool _aiAnalyzing = false;
   bool _autoUploadEnabled = true;
+  // AI raw result fields (before user accepts/rejects)
   String? _aiCuisine;
   String? _aiSpiceLevel;
   String? _aiIngredients;
@@ -316,6 +328,9 @@ class _EditMealScreenState extends State<EditMealScreen> {
   String? _aiSideDish;
   String? _aiDrink;
   String? _aiSnack;
+  String? _aiDishName;
+  // Track which fields the user has accepted
+  final Set<String> _acceptedFields = {};
   bool _locating = true;
   String _locationStatus = '定位中...';
   int _locationRequestId = 0;
@@ -325,7 +340,7 @@ class _EditMealScreenState extends State<EditMealScreen> {
   void initState() {
     super.initState();
     final existing = widget.existingRecord;
-    _imagePath = widget.imagePath;
+    _imagePaths = List.of(widget.imagePaths);
     _dishController = TextEditingController(text: widget.initialDraft.dishName);
     _locationController =
         TextEditingController(text: widget.initialDraft.location);
@@ -347,6 +362,7 @@ class _EditMealScreenState extends State<EditMealScreen> {
 
   @override
   void dispose() {
+    _pageController.dispose();
     _dishController.dispose();
     _locationController.dispose();
     _priceController.dispose();
@@ -361,7 +377,7 @@ class _EditMealScreenState extends State<EditMealScreen> {
     final isEditing = widget.existingRecord != null;
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(title: Text(isEditing ? '编辑记录' : '编辑记录')),
+      appBar: AppBar(title: Text(isEditing ? '编辑记录' : '新增记录')),
       body: ThemedPageBackground(
         child: SafeArea(
           child: SingleChildScrollView(
@@ -372,13 +388,48 @@ class _EditMealScreenState extends State<EditMealScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(layout.cardRadius),
-                  child: Image.file(
-                    File(_imagePath),
-                    height: layout.cameraFrameHeight,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
+                // Multi-image preview
+                SizedBox(
+                  height: layout.cameraFrameHeight,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: PageView.builder(
+                          controller: _pageController,
+                          itemCount: _imagePaths.length,
+                          onPageChanged: (i) =>
+                              setState(() => _currentImageIndex = i),
+                          itemBuilder: (_, i) => ClipRRect(
+                            borderRadius: BorderRadius.circular(layout.cardRadius),
+                            child: Image.file(
+                              File(_imagePaths[i]),
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (_imagePaths.length > 1) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(
+                            _imagePaths.length,
+                            (i) => Container(
+                              width: 8,
+                              height: 8,
+                              margin: const EdgeInsets.symmetric(horizontal: 3),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: i == _currentImageIndex
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Colors.grey.shade300,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -459,37 +510,7 @@ class _EditMealScreenState extends State<EditMealScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                SectionCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('AI 辅助', style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 8),
-                      Text(
-                        '可以用 AI 帮你补菜名和分析信息，失败时会给出更明确的提示。',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 12),
-                      FilledButton.tonal(
-                        onPressed: _aiAnalyzing ? null : _analyzeWithAI,
-                        child: Text(_aiAnalyzing ? '识别中...' : '用 AI 识别图片'),
-                      ),
-                      if (_aiMainDish?.isNotEmpty == true ||
-                          _aiCuisine?.isNotEmpty == true ||
-                          _aiIngredients?.isNotEmpty == true) ...[
-                        const SizedBox(height: 12),
-                        if (_aiMainDish?.isNotEmpty == true) Text('主菜：$_aiMainDish'),
-                        if (_aiSideDish?.isNotEmpty == true) Text('配菜：$_aiSideDish'),
-                        if (_aiDrink?.isNotEmpty == true) Text('饮品：$_aiDrink'),
-                        if (_aiSnack?.isNotEmpty == true) Text('小吃：$_aiSnack'),
-                        if (_aiCuisine?.isNotEmpty == true) Text('菜系：$_aiCuisine'),
-                        if (_aiSpiceLevel?.isNotEmpty == true) Text('辣度：$_aiSpiceLevel'),
-                        if (_aiIngredients?.isNotEmpty == true)
-                          Text('食材：$_aiIngredients'),
-                      ],
-                    ],
-                  ),
-                ),
+                _buildAiSection(context),
                 const SizedBox(height: 18),
                 SizedBox(
                   width: double.infinity,
@@ -515,7 +536,7 @@ class _EditMealScreenState extends State<EditMealScreen> {
     try {
       if (existing == null) {
         await widget.repository.saveRecord(
-          sourceImagePath: _imagePath,
+          sourceImagePaths: _imagePaths,
           dishNameInput: _dishController.text,
           locationInput: _locationController.text,
           priceText: _priceController.text,
@@ -580,14 +601,18 @@ class _EditMealScreenState extends State<EditMealScreen> {
       return;
     }
 
-    setState(() => _aiAnalyzing = true);
+    setState(() {
+      _aiAnalyzing = true;
+      _acceptedFields.clear();
+    });
     try {
-      final result = await agent.analyzeFoodImage(_imagePath);
-      if (!mounted) {
-        return;
-      }
+      final result = _imagePaths.length > 1
+          ? await agent.analyzeFoodImages(_imagePaths)
+          : await agent.analyzeFoodImage(_imagePaths.first);
+      if (!mounted) return;
       setState(() {
         _aiAnalyzing = false;
+        _aiDishName = result.dishName.isNotEmpty ? result.dishName : null;
         _aiMainDish = result.mainDish;
         _aiSideDish = result.sideDish;
         _aiDrink = result.drink;
@@ -595,19 +620,179 @@ class _EditMealScreenState extends State<EditMealScreen> {
         _aiCuisine = result.cuisine;
         _aiSpiceLevel = result.spiceLevel;
         _aiIngredients = result.ingredients;
-        if (_dishController.text.trim().isEmpty && result.dishName.isNotEmpty) {
-          _dishController.text = result.dishName;
-        }
       });
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       setState(() => _aiAnalyzing = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_friendlyAiError(error))),
       );
     }
+  }
+
+  Widget _buildAiSection(BuildContext context) {
+    final hasAiResult = _aiMainDish?.isNotEmpty == true ||
+        _aiCuisine?.isNotEmpty == true ||
+        _aiIngredients?.isNotEmpty == true;
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('AI 辅助', style: Theme.of(context).textTheme.titleMedium),
+              const Spacer(),
+              if (hasAiResult) ...[
+                TextButton.icon(
+                  onPressed: _adoptAll,
+                  icon: const Icon(Icons.done_all, size: 16),
+                  label: const Text('全部采纳'),
+                ),
+                const SizedBox(width: 4),
+                TextButton.icon(
+                  onPressed: _clearAi,
+                  icon: const Icon(Icons.clear_all, size: 16),
+                  label: const Text('清除'),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonal(
+              onPressed: _aiAnalyzing ? null : _analyzeWithAI,
+              child: _aiAnalyzing
+                  ? const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(width: 16, height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2)),
+                        SizedBox(width: 8),
+                        Text('AI 识别中...'),
+                      ],
+                    )
+                  : Text(_imagePaths.length > 1
+                      ? '用 AI 识别图片（${_imagePaths.length} 张）'
+                      : '用 AI 识别图片'),
+            ),
+          ),
+          if (hasAiResult) ...[
+            const SizedBox(height: 12),
+            _aiField('菜品名称', _aiDishName, 'dishName'),
+            _aiField('主菜', _aiMainDish, 'mainDish'),
+            _aiField('配菜', _aiSideDish, 'sideDish'),
+            _aiField('饮品', _aiDrink, 'drink'),
+            _aiField('小吃', _aiSnack, 'snack'),
+            _aiField('菜系', _aiCuisine, 'cuisine'),
+            _aiField('辣度', _aiSpiceLevel, 'spiceLevel'),
+            _aiField('食材', _aiIngredients, 'ingredients'),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _aiField(String label, String? value, String fieldKey) {
+    if (value == null || value.isEmpty) return const SizedBox.shrink();
+    final accepted = _acceptedFields.contains(fieldKey);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: accepted ? Colors.green.shade50 : Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+            color: accepted ? Colors.green.shade200 : Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                const SizedBox(height: 2),
+                Text(value, style: const TextStyle(fontSize: 14)),
+              ],
+            ),
+          ),
+          if (!accepted) ...[
+            _aiActionBtn(Icons.check_rounded, Colors.green, () => _adoptField(fieldKey)),
+            const SizedBox(width: 8),
+            _aiActionBtn(Icons.close_rounded, Colors.red.shade400, () => _dismissField(fieldKey)),
+          ] else
+            Icon(Icons.check_circle, size: 20, color: Colors.green.shade600),
+        ],
+      ),
+    );
+  }
+
+  Widget _aiActionBtn(IconData icon, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 32, height: 32,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color.withValues(alpha: 0.1),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
+        ),
+        child: Icon(icon, size: 18, color: color),
+      ),
+    );
+  }
+
+  void _adoptField(String key) {
+    setState(() {
+      _acceptedFields.add(key);
+      if (key == 'dishName' && _aiDishName?.isNotEmpty == true)
+        _dishController.text = _aiDishName!;
+      else if (key == 'mainDish' && _aiMainDish?.isNotEmpty == true)
+        _dishController.text = _aiMainDish!;
+    });
+  }
+
+  void _dismissField(String key) {
+    setState(() {
+      _acceptedFields.remove(key);
+      switch (key) {
+        case 'dishName': _aiDishName = null; break;
+        case 'mainDish': _aiMainDish = null; break;
+        case 'sideDish': _aiSideDish = null; break;
+        case 'drink': _aiDrink = null; break;
+        case 'snack': _aiSnack = null; break;
+        case 'cuisine': _aiCuisine = null; break;
+        case 'spiceLevel': _aiSpiceLevel = null; break;
+        case 'ingredients': _aiIngredients = null; break;
+      }
+    });
+  }
+
+  void _adoptAll() {
+    setState(() {
+      if (_aiDishName?.isNotEmpty == true) {
+        _acceptedFields.add('dishName');
+        _dishController.text = _aiDishName!;
+      }
+      for (final e in {
+        'mainDish': _aiMainDish, 'sideDish': _aiSideDish,
+        'drink': _aiDrink, 'snack': _aiSnack, 'cuisine': _aiCuisine,
+        'spiceLevel': _aiSpiceLevel, 'ingredients': _aiIngredients,
+      }.entries) {
+        if (e.value?.isNotEmpty == true) _acceptedFields.add(e.key);
+      }
+    });
+  }
+
+  void _clearAi() {
+    setState(() {
+      _aiDishName = null; _aiMainDish = null; _aiSideDish = null;
+      _aiDrink = null; _aiSnack = null; _aiCuisine = null;
+      _aiSpiceLevel = null; _aiIngredients = null;
+      _acceptedFields.clear();
+    });
   }
 
   void _beginGpsLookup() {
@@ -837,20 +1022,43 @@ class _RecentRecordCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: Image.file(
-                  File(record.imagePath),
-                  width: 82,
-                  height: 82,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, error, stackTrace) => Container(
-                    width: 82,
-                    height: 82,
-                    color: Colors.grey.shade200,
-                    child: const Icon(Icons.broken_image_outlined),
+              Stack(
+                children: [
+                  GestureDetector(
+                    onTap: () => openImageViewer(context, record.imagePaths),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: Image.file(
+                        File(record.imagePath),
+                        width: 82,
+                        height: 82,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, error, stackTrace) => Container(
+                          width: 82,
+                          height: 82,
+                          color: Colors.grey.shade200,
+                          child: const Icon(Icons.broken_image_outlined),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  if (record.imagePaths.length > 1)
+                    Positioned(
+                      right: 4,
+                      bottom: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '+${record.imagePaths.length - 1}',
+                          style: const TextStyle(color: Colors.white, fontSize: 10),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(width: 14),
               Expanded(

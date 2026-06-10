@@ -32,6 +32,24 @@ class AgentService {
     return ImageAnalysisResult.fromJson(result);
   }
 
+  /// 分析多张食物图片
+  Future<ImageAnalysisResult> analyzeFoodImages(List<String> imagePaths) async {
+    final b64List = <String>[];
+    for (final path in imagePaths.take(4)) {
+      b64List.add(await _imageToBase64(path));
+    }
+    if (b64List.isEmpty) throw LlmException('没有可用的图片');
+
+    final result = await _llm.callLlmWithImages(
+      systemPrompt: _imageAnalysisPrompt,
+      text:
+          '这是同一道菜的 ${b64List.length} 张不同角度/细节的照片，请综合分析，输出识别结果。',
+      imageBase64List: b64List,
+    );
+
+    return ImageAnalysisResult.fromJson(result);
+  }
+
   // ===== 2. 生成美食日记 =====
 
   /// 基于一段时间内的用餐记录生成美食日记

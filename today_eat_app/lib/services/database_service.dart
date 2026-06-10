@@ -11,7 +11,7 @@ class DatabaseService {
   DatabaseService._();
 
   static final DatabaseService instance = DatabaseService._();
-  static const int _databaseVersion = 4;
+  static const int _databaseVersion = 5;
 
   Database? _database;
 
@@ -261,6 +261,7 @@ class DatabaseService {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         image_path TEXT NOT NULL,
+        image_paths TEXT,
         dish_name TEXT NOT NULL,
         location TEXT NOT NULL,
         price REAL,
@@ -373,6 +374,15 @@ class DatabaseService {
     final taskTables = await db.rawQuery(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='recommendation_upload_tasks'",
     );
+    // v5: add multi-image column + migrate existing single-path records
+    await addColumn(
+      'ALTER TABLE meal_records ADD COLUMN image_paths TEXT',
+      'image_paths',
+    );
+    await db.execute(
+      "UPDATE meal_records SET image_paths = image_path WHERE image_paths IS NULL AND image_path != ''",
+    );
+
     if (taskTables.isEmpty) {
       await _createUploadTaskTable(db);
     }

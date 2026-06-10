@@ -44,7 +44,7 @@ class MealRecord {
     required this.clientRecordId,
     required this.createdAt,
     required this.updatedAt,
-    required this.imagePath,
+    required this.imagePaths,
     required this.dishName,
     required this.location,
     required this.price,
@@ -72,7 +72,11 @@ class MealRecord {
   final String clientRecordId;
   final DateTime createdAt;
   final DateTime updatedAt;
-  final String imagePath;
+  final List<String> imagePaths;
+
+  /// Backward-compat: first image is primary
+  String get imagePath =>
+      imagePaths.isNotEmpty ? imagePaths.first : '';
   final String dishName;
   final String location;
   final double? price;
@@ -100,7 +104,7 @@ class MealRecord {
     String? clientRecordId,
     DateTime? createdAt,
     DateTime? updatedAt,
-    String? imagePath,
+    List<String>? imagePaths,
     String? dishName,
     String? location,
     double? price,
@@ -128,7 +132,7 @@ class MealRecord {
       clientRecordId: clientRecordId ?? this.clientRecordId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      imagePath: imagePath ?? this.imagePath,
+      imagePaths: imagePaths ?? this.imagePaths,
       dishName: dishName ?? this.dishName,
       location: location ?? this.location,
       price: price ?? this.price,
@@ -165,7 +169,8 @@ class MealRecord {
       'minute': createdAt.minute,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
-      'image_path': imagePath,
+      'image_path': imagePaths.isNotEmpty ? imagePaths.first : '',
+      'image_paths': imagePaths.join(','),
       'dish_name': dishName,
       'location': location,
       'price': price,
@@ -190,6 +195,20 @@ class MealRecord {
     };
   }
 
+  static List<String> _parseImagePaths(Map<String, Object?> map) {
+    // Try new multi-path column first
+    final pathsStr = map['image_paths'] as String?;
+    if (pathsStr != null && pathsStr.isNotEmpty) {
+      return pathsStr.split(',').map((p) => p.trim()).where((p) => p.isNotEmpty).toList();
+    }
+    // Fallback: old single image_path
+    final single = map['image_path'] as String?;
+    if (single != null && single.isNotEmpty) {
+      return [single];
+    }
+    return [];
+  }
+
   factory MealRecord.fromMap(Map<String, Object?> map) {
     final id = map['id'] as int?;
     final createdAt = DateTime.parse(map['created_at'] as String);
@@ -203,7 +222,7 @@ class MealRecord {
             map['updated_at'] as String? ?? map['created_at'] as String? ?? '',
           ) ??
           createdAt,
-      imagePath: map['image_path'] as String,
+      imagePaths: _parseImagePaths(map),
       dishName: map['dish_name'] as String,
       location: map['location'] as String,
       price: (map['price'] as num?)?.toDouble(),

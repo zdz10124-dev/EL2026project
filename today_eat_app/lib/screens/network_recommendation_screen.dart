@@ -172,13 +172,11 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
 
   Future<void> _bootstrap() async {
     _distanceBucket ??= await widget.repository.getSavedRecommendationDistanceBucket();
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     if (_distanceBucket != null && _locationResult == null) {
-      unawaited(_resolveLocation());
+      _resolveLocation().timeout(const Duration(seconds: 8)).catchError((_) {});
     }
-    unawaited(_syncUploadsSilently());
+    _syncUploadsSilently();
     await _loadRecommendations(refresh: true, showSpinner: _items.isEmpty);
   }
 
@@ -247,15 +245,23 @@ class _NetworkRecommendationPageState extends State<NetworkRecommendationPage> {
       });
       _persistPageCache();
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       setState(() {
         _loading = false;
         _loadingMore = false;
-        _errorText = error.toString();
+        _errorText = _friendlyRecommendationError(error);
       });
     }
+  }
+
+  String _friendlyRecommendationError(Object error) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('timeout') || text.contains('timed out'))
+      return '联网推荐服务响应超时，请检查网络后重试。';
+    if (text.contains('socket') || text.contains('failed host lookup') ||
+        text.contains('connection') || text.contains('network'))
+      return '无法连接联网推荐服务，请检查网络后重试。';
+    return '加载推荐失败，请稍后重试。';
   }
 
   void _persistPageCache() {
