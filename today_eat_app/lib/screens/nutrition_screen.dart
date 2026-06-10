@@ -7,7 +7,7 @@ import '../models/nutrition_analysis.dart';
 import '../services/agent_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/section_card.dart';
-import '../widgets/themed_page_background.dart';
+import '../widgets/themed_subpage_scaffold.dart';
 
 class NutritionScreen extends StatefulWidget {
   const NutritionScreen({
@@ -68,7 +68,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
 
   Future<void> _cacheResult(NutritionAnalysis result) async {
     final prefs = await SharedPreferences.getInstance();
-    final now = '${DateTime.now().month}/${DateTime.now().day} '
+    final now =
+        '${DateTime.now().month}/${DateTime.now().day} '
         '${DateTime.now().hour.toString().padLeft(2, '0')}:'
         '${DateTime.now().minute.toString().padLeft(2, '0')}';
     await prefs.setString(_cacheKeyWithPeriod, jsonEncode(result.toJson()));
@@ -87,8 +88,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
       final cutoff = _period == 'week'
           ? DateTime.now().subtract(const Duration(days: 7))
           : DateTime.now().subtract(const Duration(days: 30));
-      final filtered =
-          allRecords.where((r) => r.createdAt.isAfter(cutoff)).toList();
+      final filtered = allRecords
+          .where((r) => r.createdAt.isAfter(cutoff))
+          .toList();
 
       if (filtered.isEmpty) {
         if (!mounted) return;
@@ -107,9 +109,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_friendlyAiError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyAiError(error))));
     }
   }
 
@@ -126,13 +128,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
+    return ThemedSubpageScaffold(
       appBar: AppBar(title: const Text('营养分析')),
-      body: ThemedPageBackground(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
           if (widget.agentService.isAvailable) ...[
             SizedBox(
               width: double.infinity,
@@ -182,17 +182,18 @@ class _NutritionScreenState extends State<NutritionScreen> {
             if (_loading)
               _emptyState('分析中...', 'AI 正在分析您的营养摄入情况，请稍候')
             else if (!widget.agentService.isAvailable)
-              _emptyState('功能准备中', '请先在设置中配置 AI 模型',
-                  icon: Icons.settings_outlined)
+              _emptyState(
+                '功能准备中',
+                '请先在设置中配置 AI 模型',
+                icon: Icons.settings_outlined,
+              )
             else
-              _emptyState('数据不足', '这段时间还没有用餐记录',
-                  icon: Icons.restaurant_menu),
+              _emptyState('数据不足', '这段时间还没有用餐记录', icon: Icons.restaurant_menu),
           ] else ...[
             const SizedBox(height: 8),
             _buildAnalysis(),
           ],
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -205,7 +206,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
         SectionCard(
           child: Column(
             children: [
-              const Icon(Icons.health_and_safety, size: 48, color: Colors.green),
+              const Icon(
+                Icons.health_and_safety,
+                size: 48,
+                color: Colors.green,
+              ),
               const SizedBox(height: 8),
               Text(
                 a.overall,
@@ -254,8 +259,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('改善建议',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text(
+                  '改善建议',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 8),
                 ...a.suggestions!.map(
                   (s) => Padding(
@@ -265,7 +272,8 @@ class _NutritionScreenState extends State<NutritionScreen> {
                       children: [
                         const Text('•  ', style: TextStyle(fontSize: 13)),
                         Expanded(
-                            child: Text(s, style: const TextStyle(fontSize: 13))),
+                          child: Text(s, style: const TextStyle(fontSize: 13)),
+                        ),
                       ],
                     ),
                   ),
@@ -278,8 +286,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
     );
   }
 
-  Widget _emptyState(String title, String subtitle,
-      {IconData icon = Icons.restaurant_menu}) {
+  Widget _emptyState(
+    String title,
+    String subtitle, {
+    IconData icon = Icons.restaurant_menu,
+  }) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.only(top: 60),
@@ -289,8 +300,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
             const SizedBox(height: 16),
             Text(title, style: TextStyle(color: Colors.grey.shade500)),
             const SizedBox(height: 4),
-            Text(subtitle,
-                style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+            Text(
+              subtitle,
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+            ),
           ],
         ),
       ),
@@ -302,7 +315,9 @@ class _NutritionScreenState extends State<NutritionScreen> {
     if (text.contains('未配置') || text.contains('not configured')) {
       return 'AI 还没有配置好，请先到设置页完成配置。';
     }
-    if (text.contains('401') || text.contains('403') || text.contains('invalid')) {
+    if (text.contains('401') ||
+        text.contains('403') ||
+        text.contains('invalid')) {
       return 'AI 配置似乎无效，请检查密钥、模型或服务端配置。';
     }
     if (text.contains('timeout') || text.contains('timed out')) {
@@ -447,7 +462,10 @@ class _ScoreCard extends StatelessWidget {
               children: [
                 Icon(icon, size: 20, color: color),
                 const SizedBox(width: 8),
-                Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  label,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -460,13 +478,15 @@ class _ScoreCard extends StatelessWidget {
                 color: score >= 70
                     ? Colors.green
                     : score >= 40
-                        ? Colors.orange
-                        : Colors.red,
+                    ? Colors.orange
+                    : Colors.red,
               ),
             ),
             const SizedBox(height: 4),
-            Text('$score/100',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            Text(
+              '$score/100',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
           ],
         ),
       ),
@@ -498,8 +518,10 @@ class _InfoCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label,
-                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text(
+                    label,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
                   const SizedBox(height: 2),
                   Text(value, style: const TextStyle(fontSize: 14)),
                 ],

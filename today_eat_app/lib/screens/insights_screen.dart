@@ -21,7 +21,7 @@ import '../models/ui_config.dart';
 import '../services/agent_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/section_card.dart';
-import '../widgets/themed_page_background.dart';
+import '../widgets/themed_subpage_scaffold.dart';
 import 'journal_notebook_page.dart' as optimized_journal;
 import 'network_recommendation_screen.dart';
 import 'nutrition_screen.dart';
@@ -160,19 +160,16 @@ class _InsightsGrid extends StatelessWidget {
           borderRadius: BorderRadius.circular(24),
           onTap: card.page == null
               ? null
-              : () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (_) => card.page!),
-                  ),
+              : () => Navigator.of(
+                  context,
+                ).push(MaterialPageRoute<void>(builder: (_) => card.page!)),
           child: SectionCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(card.icon, size: 28),
                 const SizedBox(height: 14),
-                Text(
-                  card.title,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
+                Text(card.title, style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 8),
                 Expanded(
                   child: Text(
@@ -237,95 +234,93 @@ class _JournalGeneratorPageState extends State<JournalGeneratorPage> {
   @override
   Widget build(BuildContext context) {
     final style = AppStyleCatalog.diaryStyleById(_styleId);
-    return Scaffold(
-      backgroundColor: Colors.transparent,
+    return ThemedSubpageScaffold(
       appBar: AppBar(title: const Text('美食日记')),
-      body: ThemedPageBackground(
-        child: FutureBuilder<List<MealRecord>>(
-          future: widget.repository.filterRecords(
-            start: DateTime(_startDate.year, _startDate.month, _startDate.day),
-            end: DateTime(
-              _endDate.year,
-              _endDate.month,
-              _endDate.day,
-              23,
-              59,
-              59,
-            ),
+      child: FutureBuilder<List<MealRecord>>(
+        future: widget.repository.filterRecords(
+          start: DateTime(_startDate.year, _startDate.month, _startDate.day),
+          end: DateTime(
+            _endDate.year,
+            _endDate.month,
+            _endDate.day,
+            23,
+            59,
+            59,
           ),
-          builder: (context, snapshot) {
-            final records = snapshot.data ?? const <MealRecord>[];
-            final journalEntries = widget.repository.buildJournalEntries(records);
-            return ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _DateCard(
-                        label: '开始日期',
-                        value: _startDate,
-                        onTap: () => _pickDate(isStart: true),
-                      ),
+        ),
+        builder: (context, snapshot) {
+          final records = snapshot.data ?? const <MealRecord>[];
+          final journalEntries = widget.repository.buildJournalEntries(records);
+          return ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _DateCard(
+                      label: '开始日期',
+                      value: _startDate,
+                      onTap: () => _pickDate(isStart: true),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _DateCard(
-                        label: '结束日期',
-                        value: _endDate,
-                        onTap: () => _pickDate(isStart: false),
-                      ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _DateCard(
+                      label: '结束日期',
+                      value: _endDate,
+                      onTap: () => _pickDate(isStart: false),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: AppStyleCatalog.diaryStyles.map((item) {
-                    return ChoiceChip(
-                      label: Text(item.name),
-                      selected: _styleId == item.id,
-                      onSelected: (_) => setState(() => _styleId = item.id),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: journalEntries.isEmpty
-                      ? null
-                      : () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => optimized_journal.OptimizedJournalNotebookPage(
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: AppStyleCatalog.diaryStyles.map((item) {
+                  return ChoiceChip(
+                    label: Text(item.name),
+                    selected: _styleId == item.id,
+                    onSelected: (_) => setState(() => _styleId = item.id),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: journalEntries.isEmpty
+                    ? null
+                    : () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              optimized_journal.OptimizedJournalNotebookPage(
                                 entries: journalEntries,
                                 style: style,
                               ),
-                            ),
+                        ),
+                      ),
+                child: const Text('生成美食日记'),
+              ),
+              const SizedBox(height: 18),
+              Text('样式预览', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 12),
+              SectionCard(
+                padding: const EdgeInsets.all(12),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: AspectRatio(
+                    aspectRatio: 3 / 4,
+                    child: style.backgroundAssetPath == null
+                        ? Container(color: style.paperColor)
+                        : Image.asset(
+                            style.backgroundAssetPath!,
+                            fit: BoxFit.cover,
                           ),
-                  child: const Text('生成美食日记'),
-                ),
-                const SizedBox(height: 18),
-                Text('样式预览', style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 12),
-                SectionCard(
-                  padding: const EdgeInsets.all(12),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: AspectRatio(
-                      aspectRatio: 3 / 4,
-                      child: style.backgroundAssetPath == null
-                          ? Container(color: style.paperColor)
-                          : Image.asset(
-                              style.backgroundAssetPath!,
-                              fit: BoxFit.cover,
-                            ),
-                    ),
                   ),
                 ),
-              ],
-            );
-          },
-        ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -381,8 +376,7 @@ class _JournalNotebookPageState extends State<JournalNotebookPage> {
     final canGoPrev = _pageIndex > 0;
     final canGoNext = _pageIndex < pages.length - 1;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
+    return ThemedSubpageScaffold(
       appBar: AppBar(
         title: Text('美食日记 · ${widget.style.name}'),
         actions: [
@@ -390,14 +384,8 @@ class _JournalNotebookPageState extends State<JournalNotebookPage> {
             enabled: !_exporting,
             onSelected: _handleExportAction,
             itemBuilder: (context) => const [
-              PopupMenuItem<String>(
-                value: 'export_image',
-                child: Text('导出图片'),
-              ),
-              PopupMenuItem<String>(
-                value: 'export_pdf',
-                child: Text('导出 PDF'),
-              ),
+              PopupMenuItem<String>(value: 'export_image', child: Text('导出图片')),
+              PopupMenuItem<String>(value: 'export_pdf', child: Text('导出 PDF')),
             ],
           ),
           IconButton(
@@ -414,56 +402,58 @@ class _JournalNotebookPageState extends State<JournalNotebookPage> {
           ),
         ],
       ),
-      body: ThemedPageBackground(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Expanded(
-                child: RepaintBoundary(
-                  key: _pageKey,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: widget.style.pageBackgroundColor,
-                      borderRadius: BorderRadius.circular(28),
-                      boxShadow: [
-                        BoxShadow(
-                          color: widget.style.shadowColor,
-                          blurRadius: 24,
-                          offset: const Offset(0, 12),
-                        ),
-                      ],
-                    ),
-                    child: _NotebookPage(
-                      pageNumber: _pageIndex + 1,
-                      items: page,
-                      style: widget.style,
-                    ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Expanded(
+              child: RepaintBoundary(
+                key: _pageKey,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: widget.style.pageBackgroundColor,
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: [
+                      BoxShadow(
+                        color: widget.style.shadowColor,
+                        blurRadius: 24,
+                        offset: const Offset(0, 12),
+                      ),
+                    ],
+                  ),
+                  child: _NotebookPage(
+                    pageNumber: _pageIndex + 1,
+                    items: page,
+                    style: widget.style,
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    onPressed: canGoPrev ? () => setState(() => _pageIndex--) : null,
-                    icon: const Icon(Icons.arrow_back_ios_rounded),
-                  ),
-                  Text('第 ${_pageIndex + 1} / ${pages.length} 页'),
-                  IconButton(
-                    onPressed: canGoNext ? () => setState(() => _pageIndex++) : null,
-                    icon: const Icon(Icons.arrow_forward_ios_rounded),
-                  ),
-                ],
-              ),
-              if (_exporting)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: LinearProgressIndicator(),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  onPressed: canGoPrev
+                      ? () => setState(() => _pageIndex--)
+                      : null,
+                  icon: const Icon(Icons.arrow_back_ios_rounded),
                 ),
-            ],
-          ),
+                Text('第 ${_pageIndex + 1} / ${pages.length} 页'),
+                IconButton(
+                  onPressed: canGoNext
+                      ? () => setState(() => _pageIndex++)
+                      : null,
+                  icon: const Icon(Icons.arrow_forward_ios_rounded),
+                ),
+              ],
+            ),
+            if (_exporting)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(),
+              ),
+          ],
         ),
       ),
     );
@@ -535,7 +525,9 @@ class _JournalNotebookPageState extends State<JournalNotebookPage> {
     final stitchedBytes = _stitchImagesVertically(pageBytes);
     final exportDir = await _resolveExportDirectory();
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final file = File(path.join(exportDir.path, 'food_journal_full_$timestamp.png'));
+    final file = File(
+      path.join(exportDir.path, 'food_journal_full_$timestamp.png'),
+    );
     await file.writeAsBytes(stitchedBytes, flush: true);
     return file;
   }
@@ -545,17 +537,16 @@ class _JournalNotebookPageState extends State<JournalNotebookPage> {
     final pageBytes = await _captureAllPagePngs(pageCount: pages.length);
     final exportDir = await _resolveExportDirectory();
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final file = File(path.join(exportDir.path, 'food_journal_full_$timestamp.pdf'));
+    final file = File(
+      path.join(exportDir.path, 'food_journal_full_$timestamp.pdf'),
+    );
     final document = pw.Document();
     for (final bytes in pageBytes) {
       document.addPage(
         pw.Page(
           pageFormat: PdfPageFormat.a4,
           build: (_) => pw.Center(
-            child: pw.Image(
-              pw.MemoryImage(bytes),
-              fit: pw.BoxFit.contain,
-            ),
+            child: pw.Image(pw.MemoryImage(bytes), fit: pw.BoxFit.contain),
           ),
         ),
       );
@@ -609,14 +600,14 @@ class _JournalNotebookPageState extends State<JournalNotebookPage> {
       );
       await saver(bytes, file);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已导出到：${file.path}')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('已导出到：${file.path}')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('导出失败：$error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('导出失败：$error')));
     } finally {
       if (mounted) {
         setState(() => _exporting = false);
@@ -654,7 +645,10 @@ class _JournalNotebookPageState extends State<JournalNotebookPage> {
       throw StateError('没有可用于拼接的页面');
     }
 
-    final width = decoded.fold<int>(0, (value, image) => max(value, image.width));
+    final width = decoded.fold<int>(
+      0,
+      (value, image) => max(value, image.width),
+    );
     final height = decoded.fold<int>(0, (value, image) => value + image.height);
     final canvas = img.Image(width: width, height: height);
     img.fill(canvas, color: img.ColorRgb8(255, 255, 255));
@@ -677,8 +671,9 @@ class _JournalNotebookPageState extends State<JournalNotebookPage> {
       baseDirectory = null;
     }
     baseDirectory ??= await getApplicationDocumentsDirectory();
-    final exportDirectory =
-        Directory(path.join(baseDirectory.path, 'journal_exports'));
+    final exportDirectory = Directory(
+      path.join(baseDirectory.path, 'journal_exports'),
+    );
     if (!await exportDirectory.exists()) {
       await exportDirectory.create(recursive: true);
     }
@@ -704,9 +699,9 @@ class _JournalNotebookPageState extends State<JournalNotebookPage> {
 
   void _showExportMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   List<List<_NotebookItem>> _buildPages(List<JournalEntry> entries) {
@@ -754,95 +749,94 @@ class _StatsAnalysisPageState extends State<StatsAnalysisPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
+    return ThemedSubpageScaffold(
       appBar: AppBar(title: const Text('统计分析')),
-      body: ThemedPageBackground(
-        child: FutureBuilder<List<MealRecord>>(
-          future: widget.repository.filterRecords(
-            start: _currentRange().$1,
-            end: _currentRange().$2,
-          ),
-          builder: (context, snapshot) {
-            final records = snapshot.data ?? const <MealRecord>[];
-            final details = widget.repository.buildDetailedStats(records);
-            final totalCost = details['totalCost'] as double;
-            final recordCount = details['recordCount'] as int;
-            final topLocations =
-                details['topLocations'] as List<MapEntry<String, int>>;
-            final topDishes =
-                details['topDishes'] as List<MapEntry<String, int>>;
-            final ratings =
-                details['ratingDistribution'] as List<MapEntry<String, int>>;
+      child: FutureBuilder<List<MealRecord>>(
+        future: widget.repository.filterRecords(
+          start: _currentRange().$1,
+          end: _currentRange().$2,
+        ),
+        builder: (context, snapshot) {
+          final records = snapshot.data ?? const <MealRecord>[];
+          final details = widget.repository.buildDetailedStats(records);
+          final totalCost = details['totalCost'] as double;
+          final recordCount = details['recordCount'] as int;
+          final topLocations =
+              details['topLocations'] as List<MapEntry<String, int>>;
+          final topDishes = details['topDishes'] as List<MapEntry<String, int>>;
+          final ratings =
+              details['ratingDistribution'] as List<MapEntry<String, int>>;
 
-            return ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    ChoiceChip(
-                      label: const Text('近 7 天'),
-                      selected: _preset == StatsRangePreset.last7Days,
-                      onSelected: (_) =>
-                          setState(() => _preset = StatsRangePreset.last7Days),
-                    ),
-                    ChoiceChip(
-                      label: const Text('近 30 天'),
-                      selected: _preset == StatsRangePreset.last30Days,
-                      onSelected: (_) =>
-                          setState(() => _preset = StatsRangePreset.last30Days),
-                    ),
-                    ChoiceChip(
-                      label: const Text('自定义'),
-                      selected: _preset == StatsRangePreset.custom,
-                      onSelected: (_) =>
-                          setState(() => _preset = StatsRangePreset.custom),
-                    ),
-                  ],
-                ),
-                if (_preset == StatsRangePreset.custom) ...[
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _DateCard(
-                          label: '开始日期',
-                          value: _customStart,
-                          onTap: () => _pickDate(true),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _DateCard(
-                          label: '结束日期',
-                          value: _customEnd,
-                          onTap: () => _pickDate(false),
-                        ),
-                      ),
-                    ],
+          return ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  ChoiceChip(
+                    label: const Text('近 7 天'),
+                    selected: _preset == StatsRangePreset.last7Days,
+                    onSelected: (_) =>
+                        setState(() => _preset = StatsRangePreset.last7Days),
+                  ),
+                  ChoiceChip(
+                    label: const Text('近 30 天'),
+                    selected: _preset == StatsRangePreset.last30Days,
+                    onSelected: (_) =>
+                        setState(() => _preset = StatsRangePreset.last30Days),
+                  ),
+                  ChoiceChip(
+                    label: const Text('自定义'),
+                    selected: _preset == StatsRangePreset.custom,
+                    onSelected: (_) =>
+                        setState(() => _preset = StatsRangePreset.custom),
                   ),
                 ],
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
+              ),
+              if (_preset == StatsRangePreset.custom) ...[
+                const SizedBox(height: 12),
+                Row(
                   children: [
-                    _StatTile(title: '记录数', value: '$recordCount'),
-                    _StatTile(title: '总花费', value: '¥${totalCost.toStringAsFixed(1)}'),
+                    Expanded(
+                      child: _DateCard(
+                        label: '开始日期',
+                        value: _customStart,
+                        onTap: () => _pickDate(true),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _DateCard(
+                        label: '结束日期',
+                        value: _customEnd,
+                        onTap: () => _pickDate(false),
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                _StatExpandableTile(title: '常去地点', entries: topLocations),
-                const SizedBox(height: 12),
-                _StatExpandableTile(title: '常吃菜品', entries: topDishes),
-                const SizedBox(height: 12),
-                _StatExpandableTile(title: '评分分布', entries: ratings),
               ],
-            );
-          },
-        ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _StatTile(title: '记录数', value: '$recordCount'),
+                  _StatTile(
+                    title: '总花费',
+                    value: '¥${totalCost.toStringAsFixed(1)}',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _StatExpandableTile(title: '常去地点', entries: topLocations),
+              const SizedBox(height: 12),
+              _StatExpandableTile(title: '常吃菜品', entries: topDishes),
+              const SizedBox(height: 12),
+              _StatExpandableTile(title: '评分分布', entries: ratings),
+            ],
+          );
+        },
       ),
     );
   }
@@ -862,7 +856,14 @@ class _StatsAnalysisPageState extends State<StatsAnalysisPage> {
       case StatsRangePreset.custom:
         return (
           DateTime(_customStart.year, _customStart.month, _customStart.day),
-          DateTime(_customEnd.year, _customEnd.month, _customEnd.day, 23, 59, 59),
+          DateTime(
+            _customEnd.year,
+            _customEnd.month,
+            _customEnd.day,
+            23,
+            59,
+            59,
+          ),
         );
     }
   }
@@ -1097,9 +1098,9 @@ class _NotebookRecordCard extends StatelessWidget {
           if (dishText.isNotEmpty)
             Text(
               dishText,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: style.inkColor,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(color: style.inkColor),
             ),
           if (dishText.isNotEmpty && locationText.isNotEmpty)
             const SizedBox(height: 6),
@@ -1109,9 +1110,7 @@ class _NotebookRecordCard extends StatelessWidget {
             const SizedBox(height: 4),
           Text(
             DateFormat('HH:mm').format(record.createdAt),
-            style: TextStyle(
-              color: style.inkColor.withValues(alpha: 0.72),
-            ),
+            style: TextStyle(color: style.inkColor.withValues(alpha: 0.72)),
           ),
         ],
       ),
@@ -1124,9 +1123,9 @@ class _NotebookRecordCard extends StatelessWidget {
           Text(
             DateFormat('yyyy/MM/dd').format(item.journalDay),
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: style.inkColor,
-                  fontWeight: FontWeight.w600,
-                ),
+              color: style.inkColor,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           if (style.useDivider) ...[
             const SizedBox(height: 4),
@@ -1187,7 +1186,9 @@ class _StatExpandableTile extends StatelessWidget {
         childrenPadding: EdgeInsets.zero,
         title: Text(title),
         subtitle: Text(
-          entries.isEmpty ? '暂无' : '${entries.first.key} · ${entries.first.value} 次',
+          entries.isEmpty
+              ? '暂无'
+              : '${entries.first.key} · ${entries.first.value} 次',
         ),
         children: entries.isEmpty
             ? const [
@@ -1197,14 +1198,14 @@ class _StatExpandableTile extends StatelessWidget {
                 ),
               ]
             : entries
-                .map(
-                  (entry) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(entry.key),
-                    trailing: Text('${entry.value} 次'),
-                  ),
-                )
-                .toList(),
+                  .map(
+                    (entry) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(entry.key),
+                      trailing: Text('${entry.value} 次'),
+                    ),
+                  )
+                  .toList(),
       ),
     );
   }

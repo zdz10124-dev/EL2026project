@@ -7,7 +7,7 @@ import '../models/preference_analysis.dart';
 import '../services/agent_service.dart';
 import '../services/meal_repository.dart';
 import '../widgets/section_card.dart';
-import '../widgets/themed_page_background.dart';
+import '../widgets/themed_subpage_scaffold.dart';
 
 class PreferenceScreen extends StatefulWidget {
   const PreferenceScreen({
@@ -64,7 +64,8 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
 
   Future<void> _cacheResult(PreferenceAnalysis result) async {
     final prefs = await SharedPreferences.getInstance();
-    final now = '${DateTime.now().month}/${DateTime.now().day} '
+    final now =
+        '${DateTime.now().month}/${DateTime.now().day} '
         '${DateTime.now().hour.toString().padLeft(2, '0')}:'
         '${DateTime.now().minute.toString().padLeft(2, '0')}';
     await prefs.setString(_cacheKeyAnalysis, jsonEncode(result.toJson()));
@@ -96,22 +97,19 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_friendlyAiError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyAiError(error))));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
+    return ThemedSubpageScaffold(
       appBar: AppBar(
         title: const Text('偏好分析'),
         actions: [
-          if (widget.agentService.isAvailable &&
-              !_loading &&
-              _analysis != null)
+          if (widget.agentService.isAvailable && !_loading && _analysis != null)
             IconButton(
               tooltip: '刷新分析',
               onPressed: _analyze,
@@ -119,10 +117,9 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
             ),
         ],
       ),
-      body: ThemedPageBackground(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
           // 加载中 + 缓存提示
           if (_loading) ...[
             _LoadingBanner(isCached: _analysis != null),
@@ -140,17 +137,18 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
             if (_loading)
               _emptyState('分析中...', 'AI 正在根据您的用餐记录分析饮食偏好，请稍候')
             else if (!widget.agentService.isAvailable)
-              _emptyState('功能准备中', '请先在设置中配置 AI 模型',
-                  icon: Icons.settings_outlined)
+              _emptyState(
+                '功能准备中',
+                '请先在设置中配置 AI 模型',
+                icon: Icons.settings_outlined,
+              )
             else
-              _emptyState('数据不足', '还没有足够的用餐记录',
-                  icon: Icons.insights_outlined),
+              _emptyState('数据不足', '还没有足够的用餐记录', icon: Icons.insights_outlined),
           ] else ...[
             const SizedBox(height: 8),
             _buildAnalysis(),
           ],
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -165,10 +163,7 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
             children: [
               const Icon(Icons.person_outline, size: 48, color: Colors.amber),
               const SizedBox(height: 8),
-              Text(
-                '饮食偏好画像',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+              Text('饮食偏好画像', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 4),
               if (a.summary != null)
                 Text(
@@ -221,8 +216,7 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
                   children: [
                     Icon(Icons.trending_up, size: 20, color: Colors.purple),
                     SizedBox(width: 8),
-                    Text('饮食趋势',
-                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    Text('饮食趋势', style: TextStyle(fontWeight: FontWeight.w600)),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -234,7 +228,8 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
                       children: [
                         const Text('•  ', style: TextStyle(fontSize: 13)),
                         Expanded(
-                            child: Text(t, style: const TextStyle(fontSize: 13))),
+                          child: Text(t, style: const TextStyle(fontSize: 13)),
+                        ),
                       ],
                     ),
                   ),
@@ -247,8 +242,11 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
     );
   }
 
-  Widget _emptyState(String title, String subtitle,
-      {IconData icon = Icons.insights_outlined}) {
+  Widget _emptyState(
+    String title,
+    String subtitle, {
+    IconData icon = Icons.insights_outlined,
+  }) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.only(top: 80),
@@ -258,8 +256,10 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
             const SizedBox(height: 16),
             Text(title, style: TextStyle(color: Colors.grey.shade500)),
             const SizedBox(height: 4),
-            Text(subtitle,
-                style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+            Text(
+              subtitle,
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+            ),
           ],
         ),
       ),
@@ -271,7 +271,9 @@ class _PreferenceScreenState extends State<PreferenceScreen> {
     if (text.contains('未配置') || text.contains('not configured')) {
       return 'AI 还没有配置好，请先到设置页完成配置。';
     }
-    if (text.contains('401') || text.contains('403') || text.contains('invalid')) {
+    if (text.contains('401') ||
+        text.contains('403') ||
+        text.contains('invalid')) {
       return 'AI 配置似乎无效，请检查密钥、模型或服务端配置。';
     }
     if (text.contains('timeout') || text.contains('timed out')) {
@@ -382,9 +384,13 @@ class _TagSection extends StatelessWidget {
               children: [
                 Icon(icon, size: 18, color: color),
                 const SizedBox(width: 6),
-                Text(label,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 14)),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -392,17 +398,23 @@ class _TagSection extends StatelessWidget {
               spacing: 8,
               runSpacing: 6,
               children: tags
-                  .map((t) => Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: color.withValues(alpha: 0.3)),
-                        ),
-                        child: Text(t,
-                            style: TextStyle(fontSize: 13, color: color)),
-                      ))
+                  .map(
+                    (t) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: color.withValues(alpha: 0.3)),
+                      ),
+                      child: Text(
+                        t,
+                        style: TextStyle(fontSize: 13, color: color),
+                      ),
+                    ),
+                  )
                   .toList(),
             ),
           ],
