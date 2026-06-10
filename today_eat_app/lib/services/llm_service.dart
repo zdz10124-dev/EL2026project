@@ -176,16 +176,20 @@ class LlmService {
       'temperature': temperature ?? c.temperature,
     };
 
-    final response = await http.post(
-      Uri.parse('${c.baseUrl}/chat/completions'),
-      headers: {
-        'Authorization': 'Bearer ${c.apiKey}',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(body),
-    );
+    try {
+      final response = await http.post(
+        Uri.parse('${c.baseUrl}/chat/completions'),
+        headers: {
+          'Authorization': 'Bearer ${c.apiKey}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 30));
 
-    return _parseResponse(response);
+      return _parseResponse(response);
+    } catch (e) {
+      throw LlmException('${_targetDesc}: $e');
+    }
   }
 
   /// Call LLM with single image (base64).
@@ -236,16 +240,20 @@ class LlmService {
       'temperature': temperature ?? c.temperature,
     };
 
-    final response = await http.post(
-      Uri.parse('${c.baseUrl}/chat/completions'),
-      headers: {
-        'Authorization': 'Bearer ${c.apiKey}',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(body),
-    );
+    try {
+      final response = await http.post(
+        Uri.parse('${c.baseUrl}/chat/completions'),
+        headers: {
+          'Authorization': 'Bearer ${c.apiKey}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 45));
 
-    return _parseResponse(response);
+      return _parseResponse(response);
+    } catch (e) {
+      throw LlmException('${_targetDesc}: $e');
+    }
   }
 
   /// Call LLM with multiple images (for multi-photo food recognition).
@@ -286,16 +294,20 @@ class LlmService {
       'temperature': temperature ?? c.temperature,
     };
 
-    final response = await http.post(
-      Uri.parse('${c.baseUrl}/chat/completions'),
-      headers: {
-        'Authorization': 'Bearer ${c.apiKey}',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(body),
-    ).timeout(const Duration(seconds: 45));
+    try {
+      final response = await http.post(
+        Uri.parse('${c.baseUrl}/chat/completions'),
+        headers: {
+          'Authorization': 'Bearer ${c.apiKey}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 45));
 
-    return _parseResponse(response);
+      return _parseResponse(response);
+    } catch (e) {
+      throw LlmException('${_targetDesc}: $e');
+    }
   }
 
   // ===== Server mode internals =====
@@ -314,27 +326,31 @@ class LlmService {
     // Always request JSON format for structured output
     body['response_format'] = {'type': 'json_object'};
 
-    final response = await http.post(
-      Uri.parse('${c.serverUrl}/v1/ai/chat'),
-      headers: {
-        'Authorization': 'Bearer ${c.authToken}',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(body),
-    );
+    try {
+      final response = await http.post(
+        Uri.parse('${c.serverUrl}/v1/ai/chat'),
+        headers: {
+          'Authorization': 'Bearer ${c.authToken}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 45));
 
-    if (response.statusCode != 200) {
-      throw LlmException(
-        '服务器 AI 代理错误 (${response.statusCode}): ${response.body}');
-    }
+      if (response.statusCode != 200) {
+        throw LlmException(
+          '服务器 AI 代理错误 (${response.statusCode}): ${response.body}');
+      }
 
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
     final content = data['choices']?[0]?['message']?['content'] as String?;
     if (content == null || content.isEmpty) {
       throw LlmException('AI 返回内容为空');
     }
 
     return jsonDecode(content) as Map<String, dynamic>;
+    } catch (e) {
+      throw LlmException('${_targetDesc}: $e');
+    }
   }
 
   // ===== Shared internals =====
@@ -358,6 +374,22 @@ class LlmService {
     if (_config == null) {
       throw LlmException('LLM 未配置，请在设置中配置 AI');
     }
+  }
+
+  String get _targetDesc => _config?.mode == LlmMode.server
+      ? _config!.serverUrl ?? '未配置服务器'
+      : _config?.baseUrl ?? '未配置 API';
+
+  String _wrapError(Object error) {
+    final msg = error.toString();
+    // Include target in network/timeout errors for diagnosis
+    if (msg.contains('SocketException') ||
+        msg.contains('HttpException') ||
+        msg.contains('Time out') ||
+        msg.contains('Timeout')) {
+      return '$msg (目标: $_targetDesc)';
+    }
+    return msg;
   }
 }
 
