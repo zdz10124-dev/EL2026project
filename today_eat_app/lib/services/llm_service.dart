@@ -64,8 +64,10 @@ class LlmService {
       final serverUrl = await _keyStorage.read(key: _serverUrlKey);
       final authToken = await _keyStorage.read(key: _authTokenKey);
       final username = await _keyStorage.read(key: _usernameKey);
-      if (serverUrl == null || serverUrl.isEmpty ||
-          authToken == null || authToken.isEmpty) {
+      if (serverUrl == null ||
+          serverUrl.isEmpty ||
+          authToken == null ||
+          authToken.isEmpty) {
         return false;
       }
       _config = LlmConfig(
@@ -77,12 +79,11 @@ class LlmService {
       return true;
     }
 
-    // Direct mode
     final apiKey = await _keyStorage.read(key: _apiKeyKey);
     if (apiKey == null || apiKey.isEmpty) return false;
 
-    final baseUrl = await _keyStorage.read(key: _baseUrlKey) ??
-        'https://api.openai.com/v1';
+    final baseUrl =
+        await _keyStorage.read(key: _baseUrlKey) ?? 'https://api.openai.com/v1';
     final model = await _keyStorage.read(key: _modelKey) ?? 'gpt-4o';
 
     _config = LlmConfig(
@@ -153,43 +154,14 @@ class LlmService {
     double? temperature,
   }) async {
     _ensureConfigured();
-
-    if (_config!.mode == LlmMode.server) {
-      return _callServerChat(
-        messages: [
-          {'role': 'system', 'content': systemPrompt},
-          {'role': 'user', 'content': userPrompt},
-        ],
-        temperature: temperature,
-      );
-    }
-
-    // Direct mode
-    final c = _config!;
-    final body = {
-      'model': c.model,
-      'messages': [
+    return _callChatCompletion(
+      messages: [
         {'role': 'system', 'content': systemPrompt},
         {'role': 'user', 'content': userPrompt},
       ],
-      'response_format': {'type': 'json_object'},
-      'temperature': temperature ?? c.temperature,
-    };
-
-    try {
-      final response = await http.post(
-        Uri.parse('${c.baseUrl}/chat/completions'),
-        headers: {
-          'Authorization': 'Bearer ${c.apiKey}',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 30));
-
-      return _parseResponse(response);
-    } catch (e) {
-      throw LlmException('${_targetDesc}: $e');
-    }
+      temperature: temperature,
+      timeout: const Duration(seconds: 30),
+    );
   }
 
   /// Call LLM with single image (base64).
@@ -200,30 +172,8 @@ class LlmService {
     double? temperature,
   }) async {
     _ensureConfigured();
-
-    if (_config!.mode == LlmMode.server) {
-      return _callServerChat(
-        messages: [
-          {'role': 'system', 'content': systemPrompt},
-          {
-            'role': 'user',
-            'content': [
-              {'type': 'text', 'text': text},
-              {
-                'type': 'image_url',
-                'image_url': {'url': 'data:image/jpeg;base64,$imageBase64'},
-              },
-            ],
-          },
-        ],
-        temperature: temperature,
-      );
-    }
-
-    final c = _config!;
-    final body = {
-      'model': c.model,
-      'messages': [
+    return _callChatCompletion(
+      messages: [
         {'role': 'system', 'content': systemPrompt},
         {
           'role': 'user',
@@ -236,24 +186,9 @@ class LlmService {
           ],
         },
       ],
-      'response_format': {'type': 'json_object'},
-      'temperature': temperature ?? c.temperature,
-    };
-
-    try {
-      final response = await http.post(
-        Uri.parse('${c.baseUrl}/chat/completions'),
-        headers: {
-          'Authorization': 'Bearer ${c.apiKey}',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 45));
-
-      return _parseResponse(response);
-    } catch (e) {
-      throw LlmException('${_targetDesc}: $e');
-    }
+      temperature: temperature,
+      timeout: const Duration(seconds: 45),
+    );
   }
 
   /// Call LLM with multiple images (for multi-photo food recognition).
@@ -267,29 +202,53 @@ class LlmService {
 
     final contentParts = <Map<String, dynamic>>[
       {'type': 'text', 'text': text},
-      ...imageBase64List.map((b64) => {
-            'type': 'image_url',
-            'image_url': {'url': 'data:image/jpeg;base64,$b64'},
-          }),
+      ...imageBase64List.map(
+        (b64) => {
+          'type': 'image_url',
+          'image_url': {'url': 'data:image/jpeg;base64,$b64'},
+        },
+      ),
     ];
 
-    if (_config!.mode == LlmMode.server) {
-      return _callServerChat(
-        messages: [
-          {'role': 'system', 'content': systemPrompt},
-          {'role': 'user', 'content': contentParts},
-        ],
-        temperature: temperature,
-      );
-    }
-
-    final c = _config!;
-    final body = {
-      'model': c.model,
-      'messages': [
+    return _callChatCompletion(
+      messages: [
         {'role': 'system', 'content': systemPrompt},
         {'role': 'user', 'content': contentParts},
       ],
+      temperature: temperature,
+      timeout: const Duration(seconds: 45),
+    );
+  }
+
+  Future<Map<String, dynamic>> _callChatCompletion({
+    required List<Map<String, dynamic>> messages,
+    required Duration timeout,
+    double? temperature,
+  }) {
+    final c = _config!;
+    if (c.mode == LlmMode.server) {
+      return _callServerChat(
+        messages: messages,
+        temperature: temperature,
+        timeout: timeout,
+      );
+    }
+    return _callDirectChat(
+      messages: messages,
+      temperature: temperature,
+      timeout: timeout,
+    );
+  }
+
+  Future<Map<String, dynamic>> _callDirectChat({
+    required List<Map<String, dynamic>> messages,
+    required Duration timeout,
+    double? temperature,
+  }) async {
+    final c = _config!;
+    final body = {
+      'model': c.model,
+      'messages': messages,
       'response_format': {'type': 'json_object'},
       'temperature': temperature ?? c.temperature,
     };
@@ -302,18 +261,17 @@ class LlmService {
           'Content-Type': 'application/json',
         },
         body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 45));
+      ).timeout(timeout);
 
-      return _parseResponse(response);
-    } catch (e) {
-      throw LlmException('${_targetDesc}: $e');
+      return _parseOpenAiJsonResponse(response, apiName: 'LLM API');
+    } catch (error) {
+      throw LlmException('${_targetDesc}: ${_wrapError(error)}');
     }
   }
 
-  // ===== Server mode internals =====
-
   Future<Map<String, dynamic>> _callServerChat({
     required List<Map<String, dynamic>> messages,
+    required Duration timeout,
     double? temperature,
   }) async {
     final c = _config!;
@@ -321,10 +279,8 @@ class LlmService {
       'model': 'gpt-4o',
       'messages': messages,
       'temperature': temperature ?? c.temperature,
+      'response_format': {'type': 'json_object'},
     };
-
-    // Always request JSON format for structured output
-    body['response_format'] = {'type': 'json_object'};
 
     try {
       final response = await http.post(
@@ -334,40 +290,52 @@ class LlmService {
           'Content-Type': 'application/json',
         },
         body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 45));
+      ).timeout(timeout);
 
-      if (response.statusCode != 200) {
-        throw LlmException(
-          '服务器 AI 代理错误 (${response.statusCode}): ${response.body}');
-      }
-
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final content = data['choices']?[0]?['message']?['content'] as String?;
-    if (content == null || content.isEmpty) {
-      throw LlmException('AI 返回内容为空');
-    }
-
-    return jsonDecode(content) as Map<String, dynamic>;
-    } catch (e) {
-      throw LlmException('${_targetDesc}: $e');
+      return _parseOpenAiJsonResponse(response, apiName: '服务器 AI 代理');
+    } catch (error) {
+      throw LlmException('${_targetDesc}: ${_wrapError(error)}');
     }
   }
 
-  // ===== Shared internals =====
-
-  Map<String, dynamic> _parseResponse(http.Response response) {
+  Map<String, dynamic> _parseOpenAiJsonResponse(
+    http.Response response, {
+    required String apiName,
+  }) {
     if (response.statusCode != 200) {
-      throw LlmException(
-        'LLM API 错误 (${response.statusCode}): ${response.body}');
+      throw LlmException('$apiName 错误 (${response.statusCode}): ${response.body}');
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final content = data['choices']?[0]?['message']?['content'] as String?;
-    if (content == null || content.isEmpty) {
-      throw LlmException('LLM 返回内容为空');
+    final content = _extractOpenAiContent(data, apiName);
+    final parsedContent = jsonDecode(content);
+    if (parsedContent is! Map<String, dynamic>) {
+      throw LlmException('$apiName 返回内容不是 JSON 对象');
+    }
+    return parsedContent;
+  }
+
+  String _extractOpenAiContent(Map<String, dynamic> data, String apiName) {
+    final choices = data['choices'];
+    if (choices is! List || choices.isEmpty) {
+      throw LlmException('$apiName 返回 choices 为空');
     }
 
-    return jsonDecode(content) as Map<String, dynamic>;
+    final firstChoice = choices.first;
+    if (firstChoice is! Map) {
+      throw LlmException('$apiName 返回 choices 格式异常');
+    }
+
+    final message = firstChoice['message'];
+    if (message is! Map) {
+      throw LlmException('$apiName 返回 message 格式异常');
+    }
+
+    final content = message['content'];
+    if (content is! String || content.isEmpty) {
+      throw LlmException('$apiName 返回内容为空');
+    }
+    return content;
   }
 
   void _ensureConfigured() {
@@ -382,7 +350,6 @@ class LlmService {
 
   String _wrapError(Object error) {
     final msg = error.toString();
-    // Include target in network/timeout errors for diagnosis
     if (msg.contains('SocketException') ||
         msg.contains('HttpException') ||
         msg.contains('Time out') ||
