@@ -6,12 +6,14 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/meal_record.dart';
 import '../models/recommendation_upload_task.dart';
+import '../models/exercise_record.dart';
+import '../models/integrated_health_analysis.dart';
 
 class DatabaseService {
   DatabaseService._();
 
   static final DatabaseService instance = DatabaseService._();
-  static const int _databaseVersion = 5;
+  static const int _databaseVersion = 7;
 
   Database? _database;
 
@@ -26,6 +28,8 @@ class DatabaseService {
       onCreate: (db, version) async {
         await _createMealRecordsTable(db);
         await _createUploadTaskTable(db);
+        await _createExerciseRecordsTable(db);
+        await _createHealthAnalysisCacheTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         await _migrateDatabase(db, oldVersion);
@@ -83,6 +87,73 @@ class DatabaseService {
       return null;
     }
     return MealRecord.fromMap(maps.first);
+  }
+
+  Future<int> insertExerciseRecord(ExerciseRecord record) async {
+    final db = await database;
+    return db.insert('exercise_records', record.toMap()..remove('id'));
+  }
+
+  Future<int> updateExerciseRecord(ExerciseRecord record) async {
+    final db = await database;
+    return db.update(
+      'exercise_records',
+      record.toMap()..remove('id'),
+      where: 'id = ?',
+      whereArgs: [record.id],
+    );
+  }
+
+  Future<int> deleteExerciseRecord(int id) async {
+    final db = await database;
+    return db.delete('exercise_records', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> deleteAllExerciseRecords() async {
+    final db = await database;
+    return db.delete('exercise_records');
+  }
+
+  Future<List<ExerciseRecord>> fetchExerciseRecords() async {
+    final db = await database;
+    final maps = await db.query('exercise_records', orderBy: 'started_at DESC');
+    return maps.map(ExerciseRecord.fromMap).toList();
+  }
+
+  Future<ExerciseRecord?> fetchExerciseRecordById(int id) async {
+    final db = await database;
+    final maps = await db.query(
+      'exercise_records',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    return maps.isEmpty ? null : ExerciseRecord.fromMap(maps.first);
+  }
+
+  Future<void> saveHealthAnalysisCache(HealthAnalysisCache cache) async {
+    final db = await database;
+    await db.insert(
+      'health_analysis_cache',
+      cache.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<HealthAnalysisCache?> fetchHealthAnalysisCache(String periodKey) async {
+    final db = await database;
+    final maps = await db.query(
+      'health_analysis_cache',
+      where: 'period_key = ?',
+      whereArgs: [periodKey],
+      limit: 1,
+    );
+    return maps.isEmpty ? null : HealthAnalysisCache.fromMap(maps.first);
+  }
+
+  Future<void> deleteAllHealthAnalysisCache() async {
+    final db = await database;
+    await db.delete('health_analysis_cache');
   }
 
   Future<int> getDatabaseFileSize() async {
@@ -301,6 +372,44 @@ class DatabaseService {
     ''');
   }
 
+  Future<void> _createExerciseRecordsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS exercise_records(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_record_id TEXT NOT NULL UNIQUE,
+        activity_type TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        duration_seconds INTEGER NOT NULL,
+        distance_meters INTEGER,
+        average_heart_rate_bpm INTEGER,
+        peak_heart_rate_bpm INTEGER,
+        calories_kcal INTEGER,
+        rpe INTEGER,
+        note TEXT,
+        detail_json TEXT NOT NULL DEFAULT '{}',
+        image_paths_json TEXT NOT NULL DEFAULT '[]',
+        source TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_exercise_started_at '
+      'ON exercise_records(started_at DESC)',
+    );
+  }
+
+  Future<void> _createHealthAnalysisCacheTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS health_analysis_cache(
+        period_key TEXT PRIMARY KEY,
+        data_fingerprint TEXT NOT NULL,
+        content_json TEXT NOT NULL,
+        generated_at TEXT NOT NULL
+      )
+    ''');
+  }
+
   Future<void> _migrateDatabase(Database db, int oldVersion) async {
     final columns = await db.rawQuery('PRAGMA table_info(meal_records)');
     final columnNames = columns
@@ -385,6 +494,12 @@ class DatabaseService {
 
     if (taskTables.isEmpty) {
       await _createUploadTaskTable(db);
+    }
+    if (oldVersion < 6) {
+      await _createExerciseRecordsTable(db);
+    }
+    if (oldVersion < 7) {
+      await _createHealthAnalysisCacheTable(db);
     }
   }
 }

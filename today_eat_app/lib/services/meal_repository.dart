@@ -206,8 +206,10 @@ class MealRepository {
     double? latitude,
     double? longitude,
     bool? autoUploadEnabled,
+    DateTime? occurredAt,
   }) async {
-    final now = DateTime.now();
+    final now = occurredAt ?? DateTime.now();
+    final updatedAt = DateTime.now();
     final savedPaths = <String>[];
     for (final src in sourceImagePaths) {
       savedPaths.add(await _copyImageToAppDir(src));
@@ -215,7 +217,7 @@ class MealRepository {
     final record = buildRecord(
       clientRecordId: _generateClientRecordId(now),
       createdAt: now,
-      updatedAt: now,
+      updatedAt: updatedAt,
       imagePaths: savedPaths,
       dishNameInput: dishNameInput,
       locationInput: locationInput,
@@ -243,8 +245,7 @@ class MealRepository {
     clearDraft();
     await refreshRecords();
     if (savedRecord.autoUploadEnabled) {
-      await syncPublicRecords();
-      await refreshRecords();
+      unawaited(_syncRecordUploadsInBackground());
     }
   }
 
@@ -272,6 +273,13 @@ class MealRepository {
       locationInput: locationInput,
       priceText: priceText,
       ratingScore: ratingScore,
+      aiMainDish: original.mainDish,
+      aiSideDish: original.sideDish,
+      aiDrink: original.drink,
+      aiSnack: original.snack,
+      aiSpiceLevel: original.spiceLevel,
+      aiIngredients: original.ingredients,
+      aiCuisine: original.cuisine,
       commentInput: commentInput ?? original.comment,
       province: province ?? original.province,
       city: city ?? original.city,
@@ -292,8 +300,7 @@ class MealRepository {
     }
     await refreshRecords();
     if (updated.autoUploadEnabled) {
-      await syncPublicRecords();
-      await refreshRecords();
+      unawaited(_syncRecordUploadsInBackground());
     }
   }
 

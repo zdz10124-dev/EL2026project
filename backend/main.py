@@ -9,7 +9,9 @@
 
 from __future__ import annotations
 
+import base64
 import math
+import mimetypes
 import os
 import random
 import sqlite3
@@ -31,6 +33,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+try:
+    from .middleware.request_limits import AiRequestLimitMiddleware
+except ImportError:
+    from middleware.request_limits import AiRequestLimitMiddleware
+
 
 APP_DIR = Path(__file__).resolve().parent
 DB_PATH = APP_DIR / "recommendations.db"
@@ -48,6 +55,7 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 72
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
 
 security = HTTPBearer(auto_error=False)
 
@@ -101,6 +109,13 @@ class AiChatRequest(BaseModel):
     response_format: dict[str, str] | None = None
 
 
+class HealthAnalysisRequest(BaseModel):
+    period: str = Field(pattern="^(7d|30d)$")
+    profile: dict[str, Any] = Field(default_factory=dict)
+    metrics: dict[str, Any]
+    allowed_evidence: list[str] = Field(default_factory=list, max_length=20)
+
+
 app = FastAPI(title="今天吃什么 联网推荐服务", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
@@ -109,6 +124,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(AiRequestLimitMiddleware)
 app.mount("/media", StaticFiles(directory=str(UPLOAD_DIR)), name="media")
 
 
@@ -1203,6 +1219,35 @@ def auth_me(user: dict = Depends(_get_current_user)) -> dict:
 # ===== AI 代理（服务端持有 API Key，客户端不暴露） =====
 
 
+async def _request_structured_ai(body: dict[str, Any]) -> dict[str, Any]:
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="服务端未配置 AI API Key")
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(
+            f"{OPENAI_BASE_URL.rstrip('/')}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+        )
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI 服务错误 ({response.status_code}): {response.text[:500]}",
+        )
+    try:
+        content = response.json()["choices"][0]["message"]["content"].strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        value = json_lib.loads(content)
+        if not isinstance(value, dict):
+            raise ValueError("AI response is not an object")
+        return value
+    except (KeyError, IndexError, TypeError, ValueError, json_lib.JSONDecodeError) as error:
+        raise HTTPException(status_code=502, detail="AI 返回内容不是有效 JSON 对象") from error
+
+
 @app.post("/v1/ai/chat")
 async def ai_chat(
     request: AiChatRequest,
@@ -1229,3 +1274,94 @@ async def ai_chat(
         )
 
     return response.json()
+
+
+@app.post("/v1/ai/exercise-recognition")
+async def recognize_exercise(
+    activity_type: str = Form(...),
+    images: list[UploadFile] = File(...),
+    user: dict = Depends(_get_current_user),
+) -> dict[str, Any]:
+    if not 1 <= len(images) <= 4:
+        raise HTTPException(status_code=400, detail="请上传 1 至 4 张运动截图")
+
+    image_parts: list[dict[str, Any]] = []
+    for image in images:
+        inferred_type = mimetypes.guess_type(image.filename or "")[0]
+        media_type = (
+            image.content_type
+            if (image.content_type or "").startswith("image/")
+            else inferred_type
+        )
+        if not (media_type or "").startswith("image/"):
+            raise HTTPException(status_code=400, detail="仅支持图片文件")
+        content = await image.read()
+        if len(content) > 8 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="单张图片不能超过 8 MB")
+        encoded = base64.b64encode(content).decode("ascii")
+        image_parts.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{media_type};base64,{encoded}"},
+        })
+
+    body = {
+        "model": OPENAI_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "你是运动截图结构化识别助手。只提取截图中明确出现的数据，"
+                    "无法确认的字段返回 null，只输出 JSON 对象。detail 使用标准键："
+                    "跑步 average_pace/cadence_spm，游泳 stroke/laps，骑行 "
+                    "average_speed_kmh/elevation_gain_m，步行 steps/average_speed_kmh。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            f"运动类型：{activity_type}。返回 started_at、duration_seconds、"
+                            "distance_meters、average_heart_rate_bpm、peak_heart_rate_bpm、"
+                            "calories_kcal、rpe、detail、confidence、warnings。"
+                        ),
+                    },
+                    *image_parts,
+                ],
+            },
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": 0.1,
+    }
+    result = await _request_structured_ai(body)
+    return {"success": True, "data": result}
+
+
+@app.post("/v1/ai/health-analysis")
+async def analyze_health(
+    request: HealthAnalysisRequest,
+    user: dict = Depends(_get_current_user),
+) -> dict[str, Any]:
+    body = {
+        "model": OPENAI_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "你是生活方式健康教练。仅依据输入 metrics 给出最多 6 条饮食、运动或休息建议。"
+                    "每条建议必须包含 category、priority、title、action 和 evidence，"
+                    "evidence 必须逐字选自 allowed_evidence。"
+                    "禁止疾病诊断和处方，只输出包含 overview、recommendations、risk_alerts 的 JSON。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": json_lib.dumps(request.model_dump(mode="json"), ensure_ascii=False),
+            },
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": 0.3,
+    }
+    result = await _request_structured_ai(body)
+    return {"success": True, "data": result}

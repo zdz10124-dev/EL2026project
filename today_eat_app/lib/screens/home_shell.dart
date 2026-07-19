@@ -3,12 +3,16 @@ import 'package:flutter/material.dart';
 import '../models/style_presets.dart';
 import '../models/ui_config.dart';
 import '../services/agent_service.dart';
+import '../services/exercise_repository.dart';
+import '../services/health_agent_service.dart';
+import '../services/health_analysis_repository.dart';
+import '../services/health_profile_repository.dart';
 import '../services/llm_service.dart';
 import '../services/meal_repository.dart';
-import 'capture_screen.dart';
-import 'decide_screen.dart';
-import 'insights_screen.dart';
+import 'health/health_hub_screen.dart';
+import 'records/records_screen.dart';
 import 'settings_screen.dart';
+import 'today/today_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({
@@ -32,47 +36,75 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   late final MealRepository _repository;
+  late final ExerciseRepository _exerciseRepository;
   late final LlmService _llmService;
   late final AgentService _agentService;
+  late final HealthAgentService _healthAgentService;
+  late final HealthProfileRepository _healthProfileRepository;
+  late final HealthAnalysisRepository _healthAnalysisRepository;
   int _currentIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _repository = MealRepository()..initialize();
+    _exerciseRepository = ExerciseRepository()..initialize();
     _llmService = LlmService();
     _agentService = AgentService(llmService: _llmService);
-    _llmService.loadConfig();
+    _healthAgentService = HealthAgentService(llmService: _llmService);
+    _healthProfileRepository = HealthProfileRepository();
+    _healthAnalysisRepository = HealthAnalysisRepository(
+      mealRepository: _repository,
+      exerciseRepository: _exerciseRepository,
+      profileRepository: _healthProfileRepository,
+      agentService: _healthAgentService,
+    );
+    _llmService.loadConfig().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _repository.dispose();
+    _exerciseRepository.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final pages = [
-      CaptureScreen(
+      TodayScreen(
         config: widget.config,
-        repository: _repository,
-        agentService: _agentService,
+        mealRepository: _repository,
+        exerciseRepository: _exerciseRepository,
+        healthAgentService: _healthAgentService,
+        healthAnalysisRepository: _healthAnalysisRepository,
+        onOpenRecords: () => setState(() => _currentIndex = 1),
+        onOpenHealth: () => setState(() => _currentIndex = 2),
+        isActive: _currentIndex == 0,
       ),
-      DecideScreen(
+      RecordsScreen(
         config: widget.config,
-        repository: _repository,
-        isActive: _currentIndex == 1,
+        mealRepository: _repository,
+        exerciseRepository: _exerciseRepository,
+        mealAgentService: _agentService,
+        healthAgentService: _healthAgentService,
       ),
-      InsightsScreen(
+      HealthHubScreen(
         config: widget.config,
-        repository: _repository,
-        agentService: _agentService,
-        defaultDiaryStyleId: widget.currentDiaryStyleId,
+        mealRepository: _repository,
+        mealAgentService: _agentService,
+        analysisRepository: _healthAnalysisRepository,
+        profileRepository: _healthProfileRepository,
+        diaryStyleId: widget.currentDiaryStyleId,
       ),
       SettingsScreen(
         config: widget.config,
         repository: _repository,
+        exerciseRepository: _exerciseRepository,
+        healthProfileRepository: _healthProfileRepository,
+        healthAnalysisRepository: _healthAnalysisRepository,
         llmService: _llmService,
         currentAppStyleId: widget.currentAppStyleId,
         currentDiaryStyleId: widget.currentDiaryStyleId,
@@ -94,20 +126,20 @@ class _HomeShellState extends State<HomeShell> {
         onDestinationSelected: (index) => setState(() => _currentIndex = index),
         destinations: [
           NavigationDestination(
-            icon: const Icon(Icons.photo_camera_outlined),
-            label: widget.config.pages.recordTab,
+            icon: const Icon(Icons.today_outlined),
+            label: '今天',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.ramen_dining_outlined),
-            label: widget.config.pages.decideTab,
+            icon: const Icon(Icons.add_chart_outlined),
+            label: '记录',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.dashboard_outlined),
-            label: widget.config.pages.insightTab,
+            icon: const Icon(Icons.monitor_heart_outlined),
+            label: '健康',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.settings_outlined),
-            label: widget.config.pages.settingsTab,
+            icon: const Icon(Icons.person_outline),
+            label: '我的',
           ),
         ],
       ),

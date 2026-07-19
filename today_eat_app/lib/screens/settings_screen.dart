@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/meal_record.dart';
 import '../models/style_presets.dart';
@@ -10,9 +12,15 @@ import '../models/ui_config.dart';
 import '../models/user_profile.dart';
 import '../services/llm_service.dart';
 import '../services/meal_repository.dart';
+import '../services/exercise_repository.dart';
+import '../services/demo_data_service.dart';
+import '../services/health_profile_repository.dart';
+import '../services/health_analysis_repository.dart';
+import '../services/health_data_export_service.dart';
 import '../widgets/rating_stars.dart';
 import '../widgets/section_card.dart';
 import '../widgets/themed_page_background.dart';
+import 'health/health_profile_screen.dart';
 import 'package:http/http.dart' as http;
 
 class SettingsScreen extends StatefulWidget {
@@ -20,6 +28,9 @@ class SettingsScreen extends StatefulWidget {
     super.key,
     required this.config,
     required this.repository,
+    required this.exerciseRepository,
+    required this.healthProfileRepository,
+    required this.healthAnalysisRepository,
     required this.llmService,
     required this.currentAppStyleId,
     required this.currentDiaryStyleId,
@@ -30,6 +41,9 @@ class SettingsScreen extends StatefulWidget {
 
   final UiConfig config;
   final MealRepository repository;
+  final ExerciseRepository exerciseRepository;
+  final HealthProfileRepository healthProfileRepository;
+  final HealthAnalysisRepository healthAnalysisRepository;
   final LlmService llmService;
   final AppStyleId currentAppStyleId;
   final DiaryStyleId currentDiaryStyleId;
@@ -43,10 +57,9 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _llmConfigured = false;
-  bool _autoFillLocation = false;
-  bool _nutritionReminder = false;
   bool _publicRecords = false;
   bool _loadingPublicRecords = true;
+  bool _importingDemo = false;
   UserProfile _profile = const UserProfile(
     displayName: UserProfile.defaultName,
     avatarEmoji: UserProfile.defaultAvatar,
@@ -92,6 +105,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onTap: _openProfileEditor,
                 ),
                 _SettingsActionTile(
+                  icon: Icons.flag_outlined,
+                  title: '健康目标与身体信息',
+                  subtitle: '设置健康目标、偏好运动、可运动时间和可选身体数据。',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => HealthProfileScreen(
+                        repository: widget.healthProfileRepository,
+                      ),
+                    ),
+                  ),
+                ),
+                _SettingsActionTile(
                   icon: Icons.storage_rounded,
                   title: '本地数据管理',
                   subtitle: '查看记录总数、图片数量、数据库占用空间，并编辑或删除记录。',
@@ -106,8 +131,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _SettingsActionTile(
                   icon: Icons.file_upload_outlined,
                   title: '导出数据',
-                  subtitle: '先保留按钮与说明，后续可导出为表格。',
-                  onTap: () => _showInfo('导出数据', '当前先保留按钮样式，后续接入实际导出功能。'),
+                  subtitle: '将健康档案、饮食和运动记录导出为 JSON 文件。',
+                  onTap: _exportData,
                 ),
                 _SettingsActionTile(
                   icon: Icons.cleaning_services_outlined,
@@ -140,20 +165,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: _llmConfigured ? '已开启 AI 识别' : '需先配置 AI 模型',
                   value: _llmConfigured,
                   onChanged: (_) => _openAiConfig(),
-                ),
-                _SettingsSwitchTile(
-                  icon: Icons.location_on_outlined,
-                  title: '定位补全地点',
-                  subtitle: '当前保留开关位置，后续可接入定位。',
-                  value: _autoFillLocation,
-                  onChanged: (value) => setState(() => _autoFillLocation = value),
-                ),
-                _SettingsSwitchTile(
-                  icon: Icons.notifications_active_outlined,
-                  title: '营养分析提醒',
-                  subtitle: '后续用于提醒用户查看营养总结。',
-                  value: _nutritionReminder,
-                  onChanged: (value) => setState(() => _nutritionReminder = value),
                 ),
                 _SettingsSwitchTile(
                   icon: Icons.public_outlined,
@@ -218,35 +229,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: '关于应用',
               children: [
                 _SettingsActionTile(
+                  icon: Icons.science_outlined,
+                  title: '导入比赛演示数据',
+                  subtitle: _importingDemo
+                      ? '正在导入…'
+                      : '导入脱敏的两天饮食与运动记录，重复执行不会重复添加。',
+                  onTap: _importingDemo ? () {} : _importDemoData,
+                ),
+                _SettingsActionTile(
                   icon: Icons.info_outline_rounded,
                   title: '应用版本',
                   subtitle: '当前版本 1.0.0',
-                  onTap: () => _showInfo('应用版本', '今天吃什么 Flutter 首版'),
+                  onTap: () => _showInfo('应用版本', '食动健康 1.0.0'),
                 ),
                 _SettingsActionTile(
                   icon: Icons.description_outlined,
                   title: '功能说明',
                   subtitle: '查看当前版本已支持的功能范围。',
-                  onTap: () => _showInfo('功能说明', '当前已支持记录、推荐、统计、日记预览与本地数据管理。'),
+                  onTap: () => _showInfo(
+                    '功能说明',
+                    '当前支持饮食与运动记录、截图识别、综合健康分析、推荐、统计和日记。',
+                  ),
                 ),
                 _SettingsActionTile(
                   icon: Icons.privacy_tip_outlined,
                   title: '隐私说明',
-                  subtitle: '说明本地数据和未来联网功能的边界。',
-                  onTap: () => _showInfo('隐私说明', '当前记录默认仅保存在本地。公开记录开关未来才会接入联网能力。'),
+                  subtitle: '说明本地数据、社区上传和 AI 分析的数据边界。',
+                  onTap: () => _showInfo(
+                    '隐私说明',
+                    '饮食和运动记录优先保存在本地。仅在开启自动上传时同步饮食推荐数据；AI 分析会按当前模式发送必要的图片或结构化指标。',
+                  ),
                 ),
                 _SettingsActionTile(
                   icon: Icons.feedback_outlined,
                   title: '意见反馈',
-                  subtitle: '当前先保留入口与说明。',
-                  onTap: () => _showInfo('意见反馈', '当前先保留页面位置，后续可接入反馈表单或邮箱。'),
+                  subtitle: '复制项目 Issue 反馈地址。',
+                  onTap: _copyFeedbackAddress,
                 ),
               ],
             ),
             const SizedBox(height: 18),
             Center(
               child: Text(
-                '愿你每天都能好好吃饭',
+                '愿你每天都能好好吃饭，也好好运动和休息',
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
@@ -269,6 +294,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _loadingPublicRecords = false;
       _profile = profile;
     });
+  }
+
+  Future<void> _importDemoData() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('导入比赛演示数据'),
+        content: const Text('将添加脱敏的饮食和运动记录，不会上传到社区。是否继续？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('导入'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _importingDemo = true);
+    try {
+      final result = await DemoDataService(
+        mealRepository: widget.repository,
+        exerciseRepository: widget.exerciseRepository,
+      ).import();
+      if (!mounted) return;
+      final message = result.total == 0
+          ? '演示数据已存在，无需重复导入'
+          : '已导入 ${result.meals} 条饮食和 ${result.exercises} 条运动记录';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('导入失败：$error')));
+      }
+    } finally {
+      if (mounted) setState(() => _importingDemo = false);
+    }
   }
 
   Future<void> _showInfo(String title, String content) async {
@@ -294,9 +359,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (confirm != true) return;
     widget.repository.clearDraft();
+    await widget.healthAnalysisRepository.clearCache();
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('临时缓存已清空')));
+        .showSnackBar(const SnackBar(content: Text('缓存已清空')));
+  }
+
+  Future<void> _copyFeedbackAddress() async {
+    const address = 'https://github.com/zdz10124-dev/EL2026project/issues';
+    await Clipboard.setData(const ClipboardData(text: address));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Issue 反馈地址已复制')));
+  }
+
+  Future<void> _exportData() async {
+    try {
+      final file = await HealthDataExportService(
+        mealRepository: widget.repository,
+        exerciseRepository: widget.exerciseRepository,
+        healthProfileRepository: widget.healthProfileRepository,
+      ).createJsonExport();
+      await SharePlus.instance.share(
+        ShareParams(
+          title: '食动健康数据导出',
+          text: '食动健康个人数据导出文件',
+          files: [XFile(file.path, mimeType: 'application/json')],
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('导出失败：$error')));
+      }
+    }
   }
 
   Future<void> _togglePublicRecords(bool value) async {
@@ -341,6 +437,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (confirm != true) return;
     await widget.repository.deleteAllRecords();
+    await widget.exerciseRepository.deleteAllRecords();
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('已删除全部记录')));
