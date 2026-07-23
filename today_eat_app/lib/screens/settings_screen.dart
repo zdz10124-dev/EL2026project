@@ -239,8 +239,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _SettingsActionTile(
                   icon: Icons.info_outline_rounded,
                   title: '应用版本',
-                  subtitle: '当前版本 1.0.0',
-                  onTap: () => _showInfo('应用版本', '食动健康 1.0.0'),
+                  subtitle: '当前版本 2.0.0',
+                  onTap: () => _showInfo('应用版本', '食动智衡 2.0.0'),
                 ),
                 _SettingsActionTile(
                   icon: Icons.description_outlined,
@@ -382,8 +382,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ).createJsonExport();
       await SharePlus.instance.share(
         ShareParams(
-          title: '食动健康数据导出',
-          text: '食动健康个人数据导出文件',
+          title: '食动智衡数据导出',
+          text: '食动智衡个人数据导出文件',
           files: [XFile(file.path, mimeType: 'application/json')],
         ),
       );

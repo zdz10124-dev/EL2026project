@@ -9,6 +9,7 @@ import '../services/health_analysis_repository.dart';
 import '../services/health_profile_repository.dart';
 import '../services/llm_service.dart';
 import '../services/meal_repository.dart';
+import 'capture_screen.dart';
 import 'health/health_hub_screen.dart';
 import 'records/records_screen.dart';
 import 'settings_screen.dart';
@@ -71,6 +72,18 @@ class _HomeShellState extends State<HomeShell> {
     super.dispose();
   }
 
+  Future<void> _recordMeal() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MealCapturePage(
+          config: widget.config,
+          repository: _repository,
+          agentService: _agentService,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = [
@@ -80,7 +93,7 @@ class _HomeShellState extends State<HomeShell> {
         exerciseRepository: _exerciseRepository,
         healthAgentService: _healthAgentService,
         healthAnalysisRepository: _healthAnalysisRepository,
-        onOpenRecords: () => setState(() => _currentIndex = 1),
+        onRecordMeal: _recordMeal,
         onOpenHealth: () => setState(() => _currentIndex = 2),
         isActive: _currentIndex == 0,
       ),
@@ -233,7 +246,9 @@ class _BackdropAccent extends StatelessWidget {
             Positioned(
               top: 110,
               left: 20,
-              child: _CheckerStrip(color: chrome.heroStart.withValues(alpha: 0.18)),
+              child: _CheckerStrip(
+                color: chrome.heroStart.withValues(alpha: 0.18),
+              ),
             ),
             Positioned(
               bottom: 150,
@@ -251,7 +266,9 @@ class _BackdropAccent extends StatelessWidget {
             Positioned(
               top: 120,
               right: 24,
-              child: _LeafBranch(color: chrome.heroStart.withValues(alpha: 0.18)),
+              child: _LeafBranch(
+                color: chrome.heroStart.withValues(alpha: 0.18),
+              ),
             ),
             Positioned(
               bottom: 170,
@@ -301,10 +318,7 @@ class _AccentDots extends StatelessWidget {
         (_) => Container(
           width: 8,
           height: 8,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
       ),
     );
@@ -330,9 +344,9 @@ class _AccentLabel extends StatelessWidget {
         child: Text(
           text.toUpperCase(),
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                letterSpacing: 1.4,
-                fontWeight: FontWeight.w800,
-              ),
+            letterSpacing: 1.4,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ),
     );

@@ -23,7 +23,7 @@ class TodayScreen extends StatefulWidget {
     required this.exerciseRepository,
     required this.healthAgentService,
     required this.healthAnalysisRepository,
-    required this.onOpenRecords,
+    required this.onRecordMeal,
     required this.onOpenHealth,
     required this.isActive,
   });
@@ -33,7 +33,7 @@ class TodayScreen extends StatefulWidget {
   final ExerciseRepository exerciseRepository;
   final HealthAgentService healthAgentService;
   final HealthAnalysisRepository healthAnalysisRepository;
-  final VoidCallback onOpenRecords;
+  final VoidCallback onRecordMeal;
   final VoidCallback onOpenHealth;
   final bool isActive;
 
@@ -54,8 +54,9 @@ class _TodayScreenState extends State<TodayScreen> {
     _mealSubscription = widget.mealRepository.recordsStream.listen((records) {
       if (mounted) setState(() => _meals = records);
     });
-    _exerciseSubscription =
-        widget.exerciseRepository.recordsStream.listen((records) {
+    _exerciseSubscription = widget.exerciseRepository.recordsStream.listen((
+      records,
+    ) {
       if (mounted) setState(() => _exercises = records);
     });
     _loadInitialData();
@@ -72,13 +73,15 @@ class _TodayScreenState extends State<TodayScreen> {
   Future<void> _loadInitialData() async {
     final meals = await widget.mealRepository.fetchRecords();
     final exercises = await widget.exerciseRepository.fetchRecords();
-    final analysis = await widget.healthAnalysisRepository
-        .fetchCachedAnalysis(AnalysisPeriod.sevenDays);
+    final analysis = await widget.healthAnalysisRepository.fetchCachedAnalysis(
+      AnalysisPeriod.sevenDays,
+    );
     if (!mounted) return;
     setState(() {
       _meals = meals;
       _exercises = exercises;
-      _recommendations = analysis?.recommendations
+      _recommendations =
+          analysis?.recommendations
               .where((item) => item.validUntil.isAfter(DateTime.now()))
               .take(3)
               .toList() ??
@@ -96,9 +99,12 @@ class _TodayScreenState extends State<TodayScreen> {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final todayMeals = _meals.where((item) => _isSameDay(item.createdAt, now)).length;
-    final todayExercises =
-        _exercises.where((item) => _isSameDay(item.startedAt, now)).toList();
+    final todayMeals = _meals
+        .where((item) => _isSameDay(item.createdAt, now))
+        .length;
+    final todayExercises = _exercises
+        .where((item) => _isSameDay(item.startedAt, now))
+        .toList();
     final exerciseMinutes = todayExercises.fold<int>(
       0,
       (sum, item) => sum + (item.durationSeconds / 60).round(),
@@ -118,9 +124,13 @@ class _TodayScreenState extends State<TodayScreen> {
           SectionCard(
             child: Row(
               children: [
-                Expanded(child: _Metric(label: '饮食记录', value: '$todayMeals 餐')),
+                Expanded(
+                  child: _Metric(label: '饮食记录', value: '$todayMeals 餐'),
+                ),
                 const SizedBox(width: 12),
-                Expanded(child: _Metric(label: '运动时长', value: '$exerciseMinutes 分钟')),
+                Expanded(
+                  child: _Metric(label: '运动时长', value: '$exerciseMinutes 分钟'),
+                ),
               ],
             ),
           ),
@@ -132,13 +142,15 @@ class _TodayScreenState extends State<TodayScreen> {
                 children: [
                   Text('今日建议', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 10),
-                  ..._recommendations.map((item) => ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(_recommendationIcon(item.category)),
-                        title: Text(item.title),
-                        subtitle: Text(item.action),
-                        onTap: widget.onOpenHealth,
-                      )),
+                  ..._recommendations.map(
+                    (item) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(_recommendationIcon(item.category)),
+                      title: Text(item.title),
+                      subtitle: Text(item.action),
+                      onTap: widget.onOpenHealth,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -154,7 +166,7 @@ class _TodayScreenState extends State<TodayScreen> {
                   children: [
                     Expanded(
                       child: FilledButton.tonalIcon(
-                        onPressed: widget.onOpenRecords,
+                        onPressed: widget.onRecordMeal,
                         icon: const Icon(Icons.restaurant_outlined),
                         label: const Text('记录饮食'),
                       ),
@@ -209,37 +221,44 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 
   bool _isSameDay(DateTime left, DateTime right) =>
-      left.year == right.year && left.month == right.month && left.day == right.day;
+      left.year == right.year &&
+      left.month == right.month &&
+      left.day == right.day;
 
-  IconData _recommendationIcon(RecommendationCategory category) => switch (category) {
+  IconData _recommendationIcon(RecommendationCategory category) =>
+      switch (category) {
         RecommendationCategory.diet => Icons.restaurant_outlined,
         RecommendationCategory.exercise => Icons.directions_run,
         RecommendationCategory.rest => Icons.bedtime_outlined,
       };
 
   Future<void> _recordExercise() async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => ExerciseEditorScreen(
-        repository: widget.exerciseRepository,
-        agentService: widget.healthAgentService,
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ExerciseEditorScreen(
+          repository: widget.exerciseRepository,
+          agentService: widget.healthAgentService,
+        ),
       ),
-    ));
+    );
   }
 
   Future<void> _openDecide() async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('今天吃什么')),
-        body: ThemedPageBackground(
-          child: DecideScreen(
-            config: widget.config,
-            repository: widget.mealRepository,
-            isActive: true,
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(title: const Text('今天吃什么')),
+          body: ThemedPageBackground(
+            child: DecideScreen(
+              config: widget.config,
+              repository: widget.mealRepository,
+              isActive: true,
+            ),
           ),
         ),
       ),
-    ));
+    );
   }
 }
 
@@ -250,11 +269,11 @@ class _Metric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.bodyMedium),
-          const SizedBox(height: 5),
-          Text(value, style: Theme.of(context).textTheme.titleLarge),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: Theme.of(context).textTheme.bodyMedium),
+      const SizedBox(height: 5),
+      Text(value, style: Theme.of(context).textTheme.titleLarge),
+    ],
+  );
 }

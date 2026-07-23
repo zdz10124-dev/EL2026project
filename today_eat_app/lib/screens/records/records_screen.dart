@@ -13,10 +13,12 @@ import '../../services/exercise_repository.dart';
 import '../../services/health_agent_service.dart';
 import '../../services/health_timeline_service.dart';
 import '../../services/meal_repository.dart';
+import '../../widgets/image_viewer.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/themed_page_background.dart';
 import '../capture_screen.dart';
 import '../exercise/exercise_editor_screen.dart';
+import 'record_detail_screen.dart';
 
 enum RecordsFilter { all, meals, exercises }
 
@@ -54,8 +56,9 @@ class _RecordsScreenState extends State<RecordsScreen> {
     _mealSubscription = widget.mealRepository.recordsStream.listen((records) {
       if (mounted) setState(() => _meals = records);
     });
-    _exerciseSubscription =
-        widget.exerciseRepository.recordsStream.listen((records) {
+    _exerciseSubscription = widget.exerciseRepository.recordsStream.listen((
+      records,
+    ) {
       if (mounted) setState(() => _exercises = records);
     });
     _loadInitialData();
@@ -80,12 +83,17 @@ class _RecordsScreenState extends State<RecordsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final allItems = _timelineService.merge(meals: _meals, exercises: _exercises);
-    final items = allItems.where((item) => switch (_filter) {
-          RecordsFilter.all => true,
-          RecordsFilter.meals => item.kind == HealthTimelineKind.meal,
-          RecordsFilter.exercises => item.kind == HealthTimelineKind.exercise,
-        });
+    final allItems = _timelineService.merge(
+      meals: _meals,
+      exercises: _exercises,
+    );
+    final items = allItems.where(
+      (item) => switch (_filter) {
+        RecordsFilter.all => true,
+        RecordsFilter.meals => item.kind == HealthTimelineKind.meal,
+        RecordsFilter.exercises => item.kind == HealthTimelineKind.exercise,
+      },
+    );
     return SafeArea(
       child: ListView(
         padding: EdgeInsets.symmetric(
@@ -95,7 +103,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
         children: [
           Row(
             children: [
-              Text('健康记录', style: Theme.of(context).textTheme.headlineMedium),
+              Text('记录', style: Theme.of(context).textTheme.headlineMedium),
               const Spacer(),
               PopupMenuButton<String>(
                 tooltip: '新增记录',
@@ -119,54 +127,66 @@ class _RecordsScreenState extends State<RecordsScreen> {
               ButtonSegment(value: RecordsFilter.exercises, label: Text('运动')),
             ],
             selected: {_filter},
-            onSelectionChanged: (value) => setState(() => _filter = value.first),
+            onSelectionChanged: (value) =>
+                setState(() => _filter = value.first),
           ),
           const SizedBox(height: 16),
           if (items.isEmpty)
             const SectionCard(child: Text('当前分类还没有记录。点击右上角添加饮食或运动。'))
           else
-            ...items.map((item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: item.kind == HealthTimelineKind.meal
-                      ? _MealTimelineCard(
-                          record: item.meal!,
-                          onEdit: () => _editMeal(item.meal!),
-                          onDelete: () => _deleteMeal(item.meal!),
-                        )
-                      : _ExerciseTimelineCard(
-                          record: item.exercise!,
-                          onEdit: () => _editExercise(item.exercise!),
-                          onDelete: () => _deleteExercise(item.exercise!),
-                        ),
-                )),
+            ...items.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: item.kind == HealthTimelineKind.meal
+                    ? _MealTimelineCard(
+                        record: item.meal!,
+                        onOpen: () => _openMealDetail(item.meal!),
+                        onEdit: () => _editMeal(item.meal!),
+                        onDelete: () => _deleteMeal(item.meal!),
+                      )
+                    : _ExerciseTimelineCard(
+                        record: item.exercise!,
+                        onOpen: () => _openExerciseDetail(item.exercise!),
+                        onEdit: () => _editExercise(item.exercise!),
+                        onDelete: () => _deleteExercise(item.exercise!),
+                      ),
+              ),
+            ),
         ],
       ),
     );
   }
 
   Future<void> _addMeal() async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('记录饮食')),
-        body: ThemedPageBackground(
-          child: CaptureScreen(
-            config: widget.config,
-            repository: widget.mealRepository,
-            agentService: widget.mealAgentService,
-          ),
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MealCapturePage(
+          config: widget.config,
+          repository: widget.mealRepository,
+          agentService: widget.mealAgentService,
         ),
       ),
-    ));
+    );
+  }
+
+  Future<void> _openMealDetail(MealRecord record) async {
+    final editRequested = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => MealRecordDetailScreen(record: record)),
+    );
+    if (editRequested == true && mounted) {
+      await _editMeal(record);
+    }
   }
 
   Future<void> _editMeal(MealRecord record) async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => _MealTimelineEditor(
-        repository: widget.mealRepository,
-        record: record,
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _MealTimelineEditor(
+          repository: widget.mealRepository,
+          record: record,
+        ),
       ),
-    ));
+    );
   }
 
   Future<void> _deleteMeal(MealRecord record) async {
@@ -180,14 +200,27 @@ class _RecordsScreenState extends State<RecordsScreen> {
   Future<void> _editExercise(ExerciseRecord record) =>
       _openExerciseEditor(record);
 
-  Future<void> _openExerciseEditor([ExerciseRecord? record]) async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => ExerciseEditorScreen(
-        repository: widget.exerciseRepository,
-        agentService: widget.healthAgentService,
-        existingRecord: record,
+  Future<void> _openExerciseDetail(ExerciseRecord record) async {
+    final editRequested = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ExerciseRecordDetailScreen(record: record),
       ),
-    ));
+    );
+    if (editRequested == true && mounted) {
+      await _editExercise(record);
+    }
+  }
+
+  Future<void> _openExerciseEditor([ExerciseRecord? record]) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ExerciseEditorScreen(
+          repository: widget.exerciseRepository,
+          agentService: widget.healthAgentService,
+          existingRecord: record,
+        ),
+      ),
+    );
   }
 
   Future<void> _deleteExercise(ExerciseRecord record) async {
@@ -220,25 +253,34 @@ class _RecordsScreenState extends State<RecordsScreen> {
 class _MealTimelineCard extends StatelessWidget {
   const _MealTimelineCard({
     required this.record,
+    required this.onOpen,
     required this.onEdit,
     required this.onDelete,
   });
   final MealRecord record;
+  final VoidCallback onOpen;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
-  Widget build(BuildContext context) => SectionCard(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _MealThumbnail(path: record.imagePath),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
+  Widget build(BuildContext context) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: onOpen,
+    child: SectionCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _RecordThumbnail(
+            imagePaths: record.imagePaths,
+            fallbackIcon: Icons.restaurant,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
                     const Icon(Icons.restaurant_outlined, size: 17),
                     const SizedBox(width: 5),
                     Expanded(
@@ -247,34 +289,40 @@ class _MealTimelineCard extends StatelessWidget {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
-                  ]),
-                  const SizedBox(height: 5),
-                  Text([
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  [
                     if (record.location.trim().isNotEmpty) record.location,
                     if (record.ratingScore != null)
                       '${(record.ratingScore! / 2).toStringAsFixed(1)} 星',
-                  ].join(' · ')),
-                  const SizedBox(height: 4),
-                  Text(
-                    DateFormat('MM-dd HH:mm').format(record.createdAt),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
+                  ].join(' · '),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  DateFormat('MM-dd HH:mm').format(record.createdAt),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
             ),
-            _RecordMenu(onEdit: onEdit, onDelete: onDelete),
-          ],
-        ),
-      );
+          ),
+          _RecordMenu(onEdit: onEdit, onDelete: onDelete),
+        ],
+      ),
+    ),
+  );
 }
 
 class _ExerciseTimelineCard extends StatelessWidget {
   const _ExerciseTimelineCard({
     required this.record,
+    required this.onOpen,
     required this.onEdit,
     required this.onDelete,
   });
   final ExerciseRecord record;
+  final VoidCallback onOpen;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -290,34 +338,43 @@ class _ExerciseTimelineCard extends StatelessWidget {
           .take(2)
           .map((item) => item.value.toString()),
     ];
-    return SectionCard(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(child: Icon(_exerciseIcon(record.activityType))),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(record.activityType.label,
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 5),
-                Text(details.join(' · ')),
-                const SizedBox(height: 4),
-                Text(
-                  DateFormat('MM-dd HH:mm').format(record.startedAt),
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                if (record.note?.isNotEmpty == true) ...[
-                  const SizedBox(height: 5),
-                  Text(record.note!),
-                ],
-              ],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onOpen,
+      child: SectionCard(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _RecordThumbnail(
+              imagePaths: record.imagePaths,
+              fallbackIcon: _exerciseIcon(record.activityType),
             ),
-          ),
-          _RecordMenu(onEdit: onEdit, onDelete: onDelete),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    record.activityType.label,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 5),
+                  Text(details.join(' · ')),
+                  const SizedBox(height: 4),
+                  Text(
+                    DateFormat('MM-dd HH:mm').format(record.startedAt),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  if (record.note?.isNotEmpty == true) ...[
+                    const SizedBox(height: 5),
+                    Text(record.note!),
+                  ],
+                ],
+              ),
+            ),
+            _RecordMenu(onEdit: onEdit, onDelete: onDelete),
+          ],
+        ),
       ),
     );
   }
@@ -330,32 +387,60 @@ class _RecordMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => PopupMenuButton<String>(
-        onSelected: (value) => value == 'edit' ? onEdit() : onDelete(),
-        itemBuilder: (_) => const [
-          PopupMenuItem(value: 'edit', child: Text('编辑')),
-          PopupMenuItem(value: 'delete', child: Text('删除')),
-        ],
-      );
+    onSelected: (value) => value == 'edit' ? onEdit() : onDelete(),
+    itemBuilder: (_) => const [
+      PopupMenuItem(value: 'edit', child: Text('编辑')),
+      PopupMenuItem(value: 'delete', child: Text('删除')),
+    ],
+  );
 }
 
-class _MealThumbnail extends StatelessWidget {
-  const _MealThumbnail({required this.path});
-  final String path;
+class _RecordThumbnail extends StatelessWidget {
+  const _RecordThumbnail({
+    required this.imagePaths,
+    required this.fallbackIcon,
+  });
+
+  final List<String> imagePaths;
+  final IconData fallbackIcon;
 
   @override
   Widget build(BuildContext context) {
-    if (path.isEmpty) {
-      return const CircleAvatar(child: Icon(Icons.restaurant));
+    final validPaths = existingImagePaths(imagePaths);
+    if (validPaths.isEmpty) {
+      return CircleAvatar(child: Icon(fallbackIcon));
     }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: Image.file(
-        File(path),
-        width: 54,
-        height: 54,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            const SizedBox(width: 54, height: 54, child: Icon(Icons.broken_image)),
+
+    return GestureDetector(
+      onTap: () => openImageViewer(context, validPaths),
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Image.file(
+              File(validPaths.first),
+              width: 54,
+              height: 54,
+              fit: BoxFit.cover,
+            ),
+          ),
+          if (validPaths.length > 1)
+            Positioned(
+              right: 3,
+              bottom: 3,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${validPaths.length}',
+                  style: const TextStyle(color: Colors.white, fontSize: 10),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -400,37 +485,39 @@ class _MealTimelineEditorState extends State<_MealTimelineEditor> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text('编辑饮食记录')),
-        body: ThemedPageBackground(
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-            SectionCard(
-              child: Column(
-                children: [
-                  TextField(
-                    controller: _dish,
-                    decoration: const InputDecoration(labelText: '菜品名称'),
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(title: const Text('编辑饮食记录')),
+    body: ThemedPageBackground(
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          SectionCard(
+            child: Column(
+              children: [
+                TextField(
+                  controller: _dish,
+                  decoration: const InputDecoration(labelText: '菜品名称'),
+                ),
+                TextField(
+                  controller: _location,
+                  decoration: const InputDecoration(labelText: '地点'),
+                ),
+                TextField(
+                  controller: _price,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
                   ),
-                  TextField(
-                    controller: _location,
-                    decoration: const InputDecoration(labelText: '地点'),
-                  ),
-                  TextField(
-                    controller: _price,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: '价格'),
-                  ),
-                  TextField(
-                    controller: _comment,
-                    minLines: 2,
-                    maxLines: 4,
-                    decoration: const InputDecoration(labelText: '备注'),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(children: [
+                  decoration: const InputDecoration(labelText: '价格'),
+                ),
+                TextField(
+                  controller: _comment,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: const InputDecoration(labelText: '备注'),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
                     const Text('评分'),
                     Expanded(
                       child: Slider(
@@ -443,24 +530,26 @@ class _MealTimelineEditorState extends State<_MealTimelineEditor> {
                       ),
                     ),
                     Text(_rating.toStringAsFixed(1)),
-                  ]),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(height: 20),
-            FilledButton(
-              onPressed: _saving ? null : _save,
-              child: Text(_saving ? '保存中…' : '保存修改'),
-            ),
-            ],
           ),
-        ),
-      );
+          const SizedBox(height: 20),
+          FilledButton(
+            onPressed: _saving ? null : _save,
+            child: Text(_saving ? '保存中…' : '保存修改'),
+          ),
+        ],
+      ),
+    ),
+  );
 
   Future<void> _save() async {
     if (_dish.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('菜品名称不能为空')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('菜品名称不能为空')));
       return;
     }
     setState(() => _saving = true);
@@ -476,8 +565,9 @@ class _MealTimelineEditorState extends State<_MealTimelineEditor> {
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('保存失败：$error')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('保存失败：$error')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -486,9 +576,9 @@ class _MealTimelineEditorState extends State<_MealTimelineEditor> {
 }
 
 IconData _exerciseIcon(ActivityType type) => switch (type) {
-      ActivityType.running => Icons.directions_run,
-      ActivityType.swimming => Icons.pool,
-      ActivityType.cycling => Icons.directions_bike,
-      ActivityType.walking => Icons.directions_walk,
-      ActivityType.other => Icons.fitness_center,
-    };
+  ActivityType.running => Icons.directions_run,
+  ActivityType.swimming => Icons.pool,
+  ActivityType.cycling => Icons.directions_bike,
+  ActivityType.walking => Icons.directions_walk,
+  ActivityType.other => Icons.fitness_center,
+};

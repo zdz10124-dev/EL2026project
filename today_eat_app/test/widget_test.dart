@@ -69,9 +69,9 @@ void main() {
     }
 
     expect(find.byType(NavigationBar), findsOneWidget);
-    expect(find.byIcon(Icons.photo_camera_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.ramen_dining_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.dashboard_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.today_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.add_chart_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.monitor_heart_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.person_outline), findsOneWidget);
   });
 }
