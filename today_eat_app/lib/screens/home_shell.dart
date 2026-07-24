@@ -142,6 +142,7 @@ class _HomeShellState extends State<HomeShell> {
         analysisRepository: _healthAnalysisRepository,
         profileRepository: _healthProfileRepository,
         diaryStyleId: widget.currentDiaryStyleId,
+        agentActionRepository: _agentActionRepository,
       ),
       SettingsScreen(
         config: widget.config,

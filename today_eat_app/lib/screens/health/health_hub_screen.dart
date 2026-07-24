@@ -6,11 +6,13 @@ import '../../services/agent_service.dart';
 import '../../services/health_analysis_repository.dart';
 import '../../services/health_profile_repository.dart';
 import '../../services/meal_repository.dart';
+import '../../services/agent_action_repository.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/themed_page_background.dart';
 import '../insights_screen.dart';
 import 'health_profile_screen.dart';
 import 'integrated_health_screen.dart';
+import 'agent_history_screen.dart';
 
 class HealthHubScreen extends StatelessWidget {
   const HealthHubScreen({
@@ -21,6 +23,7 @@ class HealthHubScreen extends StatelessWidget {
     required this.analysisRepository,
     required this.profileRepository,
     required this.diaryStyleId,
+    required this.agentActionRepository,
   });
 
   final UiConfig config;
@@ -29,6 +32,7 @@ class HealthHubScreen extends StatelessWidget {
   final HealthAnalysisRepository analysisRepository;
   final HealthProfileRepository profileRepository;
   final DiaryStyleId diaryStyleId;
+  final AgentActionRepository agentActionRepository;
 
   @override
   Widget build(BuildContext context) => SafeArea(
@@ -49,6 +53,16 @@ class HealthHubScreen extends StatelessWidget {
               onTap: () => _open(
                 context,
                 IntegratedHealthScreen(repository: analysisRepository),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _HealthEntry(
+              icon: Icons.history_outlined,
+              title: 'Agent 行动记录',
+              description: '查看近七天行动完成、跳过和难度反馈。',
+              onTap: () => _open(
+                context,
+                AgentHistoryScreen(repository: agentActionRepository),
               ),
             ),
             const SizedBox(height: 12),

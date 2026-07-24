@@ -24,7 +24,7 @@ class DecideScreen extends StatefulWidget {
 }
 
 class _DecideScreenState extends State<DecideScreen> {
-  DecisionMode _mode = DecisionMode.random;
+  DecisionMode _mode = DecisionMode.healthContext;
   MealSuggestion? _suggestion;
   bool _loading = false;
 
@@ -120,6 +120,18 @@ class _DecideScreenState extends State<DecideScreen> {
               children: [
                 Expanded(
                   child: _ModeCard(
+                    title: '健康场景',
+                    icon: Icons.monitor_heart_outlined,
+                    selected: _mode == DecisionMode.healthContext,
+                    onTap: () {
+                      setState(() => _mode = DecisionMode.healthContext);
+                      _resetSuggestionState();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _ModeCard(
                     title: decision.randomModeName,
                     icon: Icons.casino_rounded,
                     selected: _mode == DecisionMode.random,
@@ -145,9 +157,11 @@ class _DecideScreenState extends State<DecideScreen> {
             ),
             const SizedBox(height: 14),
             Text(
-              _mode == DecisionMode.random
-                  ? decision.randomModeDescription
-                  : decision.preferenceModeDescription,
+              _mode == DecisionMode.healthContext
+                  ? '根据今天的饮食、运动和恢复状态决定。'
+                  : _mode == DecisionMode.random
+                      ? decision.randomModeDescription
+                      : decision.preferenceModeDescription,
             ),
             const SizedBox(height: 18),
             if (_suggestion != null)

@@ -50,7 +50,7 @@ import 'app_settings_service.dart';
 import 'database_service.dart';
 import 'recommendation_api_service.dart';
 
-enum DecisionMode { random, preference }
+enum DecisionMode { healthContext, random, preference }
 
 enum StatsRangePreset { last7Days, last30Days, custom }
 
@@ -698,6 +698,12 @@ class MealRepository {
       );
     }
 
+    if (mode == DecisionMode.healthContext) {
+      return MealSuggestion(
+        title: '先记录今天的状态',
+        reason: '从今日主行动进入可获得结合恢复、饮食与运动的健康场景建议。',
+      );
+    }
     if (mode == DecisionMode.random) {
       final record = candidates[_random.nextInt(candidates.length)];
       return MealSuggestion(
