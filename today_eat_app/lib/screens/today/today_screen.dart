@@ -6,14 +6,17 @@ import '../../models/exercise_record.dart';
 import '../../models/meal_record.dart';
 import '../../models/recovery_check_in.dart';
 import '../../models/integrated_health_analysis.dart';
+import '../../models/agent_action.dart';
 import '../../models/ui_config.dart';
 import '../../services/exercise_repository.dart';
 import '../../services/health_agent_service.dart';
 import '../../services/health_analysis_repository.dart';
 import '../../services/meal_repository.dart';
+import '../../services/daily_agent_repository.dart';
 import '../../services/recovery_repository.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/themed_page_background.dart';
+import '../../widgets/agent_action_card.dart';
 import '../decide_screen.dart';
 import '../exercise/exercise_editor_screen.dart';
 import '../recovery/recovery_check_in_screen.dart';
@@ -27,6 +30,7 @@ class TodayScreen extends StatefulWidget {
     required this.healthAgentService,
     required this.healthAnalysisRepository,
     required this.recoveryRepository,
+    required this.dailyAgentRepository,
     required this.onRecordMeal,
     required this.onOpenHealth,
     required this.isActive,
@@ -38,6 +42,7 @@ class TodayScreen extends StatefulWidget {
   final HealthAgentService healthAgentService;
   final HealthAnalysisRepository healthAnalysisRepository;
   final RecoveryRepository recoveryRepository;
+  final DailyAgentRepository dailyAgentRepository;
   final VoidCallback onRecordMeal;
   final VoidCallback onOpenHealth;
   final bool isActive;
@@ -51,6 +56,7 @@ class _TodayScreenState extends State<TodayScreen> {
   List<ExerciseRecord> _exercises = const [];
   List<HealthRecommendation> _recommendations = const [];
   RecoveryCheckIn? _recovery;
+  DailyAgentState? _agentState;
   StreamSubscription<List<MealRecord>>? _mealSubscription;
   StreamSubscription<List<ExerciseRecord>>? _exerciseSubscription;
   StreamSubscription<RecoveryCheckIn?>? _recoverySubscription;
@@ -81,12 +87,14 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 
   Future<void> _loadInitialData() async {
+    final now = DateTime.now();
     final meals = await widget.mealRepository.fetchRecords();
     final exercises = await widget.exerciseRepository.fetchRecords();
     final analysis = await widget.healthAnalysisRepository.fetchCachedAnalysis(
       AnalysisPeriod.sevenDays,
     );
-    final recovery = await widget.recoveryRepository.findByDate(DateTime.now());
+    final recovery = await widget.recoveryRepository.findByDate(now);
+    final agentState = await widget.dailyAgentRepository.load(now);
     if (!mounted) return;
     setState(() {
       _meals = meals;
@@ -98,6 +106,7 @@ class _TodayScreenState extends State<TodayScreen> {
               .toList() ??
           const [];
       _recovery = recovery;
+      _agentState = agentState;
     });
   }
 
@@ -198,6 +207,26 @@ class _TodayScreenState extends State<TodayScreen> {
             ),
           ),
           const SizedBox(height: 14),
+          if (_agentState?.primaryAction case final action?) ...[
+            AgentActionCard(
+              action: action,
+              source: _agentState!.plan!.source,
+              onOpenEvidence: () => _showEvidence(action),
+              onExecute: () => _executeAgentAction(action),
+              onComplete: () => _completeAction(action),
+              onSkip: () => _skipAction(action),
+              onTooHard: () => _skipAction(
+                action,
+                difficulty: AgentActionDifficulty.tooHard,
+              ),
+            ),
+            if (_agentState!.message case final message?)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(message),
+              ),
+            const SizedBox(height: 14),
+          ],
           SectionCard(
             child: Row(
               children: [
@@ -314,8 +343,70 @@ class _TodayScreenState extends State<TodayScreen> {
       ),
     );
     if (saved == true) {
+      await widget.dailyAgentRepository.markNeedsRefresh(DateTime.now());
       await _loadInitialData();
     }
+  }
+
+  Future<void> _executeAgentAction(AgentAction action) async {
+    switch (action.target) {
+      case AgentActionTarget.recordMeal:
+        widget.onRecordMeal();
+        return;
+      case AgentActionTarget.recordExercise:
+        await _recordExercise();
+        return;
+      case AgentActionTarget.decideMeal:
+        await _openDecide();
+        return;
+      case AgentActionTarget.recoveryCheckIn:
+        await _openRecoveryCheckIn();
+        return;
+      case AgentActionTarget.openHealth:
+        widget.onOpenHealth();
+        return;
+      case AgentActionTarget.none:
+        return;
+    }
+  }
+
+  Future<void> _completeAction(AgentAction action) async {
+    await widget.dailyAgentRepository.completeAction(action.clientActionId);
+    await _loadInitialData();
+  }
+
+  Future<void> _skipAction(
+    AgentAction action, {
+    AgentActionDifficulty? difficulty,
+  }) async {
+    await widget.dailyAgentRepository.skipAction(
+      action.clientActionId,
+      difficulty: difficulty,
+    );
+    await _loadInitialData();
+  }
+
+  void _showEvidence(AgentAction action) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('行动依据', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 12),
+              ...action.evidence.map((item) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text('• $item'),
+              )),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

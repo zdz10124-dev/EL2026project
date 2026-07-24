@@ -10,6 +10,9 @@ import '../services/health_profile_repository.dart';
 import '../services/llm_service.dart';
 import '../services/meal_repository.dart';
 import '../services/recovery_repository.dart';
+import '../services/agent_action_repository.dart';
+import '../services/daily_agent_repository.dart';
+import '../services/health_context_service.dart';
 import 'capture_screen.dart';
 import 'health/health_hub_screen.dart';
 import 'records/records_screen.dart';
@@ -45,22 +48,41 @@ class _HomeShellState extends State<HomeShell> {
   late final HealthProfileRepository _healthProfileRepository;
   late final HealthAnalysisRepository _healthAnalysisRepository;
   late final RecoveryRepository _recoveryRepository;
+  late final AgentActionRepository _agentActionRepository;
+  late final HealthContextService _healthContextService;
+  late final DailyAgentRepository _dailyAgentRepository;
   int _currentIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _repository = MealRepository()..initialize();
-    _exerciseRepository = ExerciseRepository()..initialize();
+    _agentActionRepository = AgentActionRepository();
+    _healthContextService = HealthContextService();
+    _repository = MealRepository(onHealthDataChanged: _markAgentPlanNeedsRefresh)
+      ..initialize();
+    _exerciseRepository = ExerciseRepository(
+      onHealthDataChanged: _markAgentPlanNeedsRefresh,
+    )..initialize();
     _llmService = LlmService();
     _agentService = AgentService(llmService: _llmService);
     _healthAgentService = HealthAgentService(llmService: _llmService);
-    _healthProfileRepository = HealthProfileRepository();
+    _healthProfileRepository = HealthProfileRepository(
+      onHealthDataChanged: _markAgentPlanNeedsRefresh,
+    );
     _recoveryRepository = RecoveryRepository();
     _healthAnalysisRepository = HealthAnalysisRepository(
       mealRepository: _repository,
       exerciseRepository: _exerciseRepository,
       profileRepository: _healthProfileRepository,
+      agentService: _healthAgentService,
+    );
+    _dailyAgentRepository = DailyAgentRepository(
+      mealRepository: _repository,
+      exerciseRepository: _exerciseRepository,
+      recoveryRepository: _recoveryRepository,
+      profileRepository: _healthProfileRepository,
+      actionRepository: _agentActionRepository,
+      contextService: _healthContextService,
       agentService: _healthAgentService,
     );
     _llmService.loadConfig().then((_) {
@@ -88,6 +110,9 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
+  Future<void> _markAgentPlanNeedsRefresh() =>
+      _dailyAgentRepository.markNeedsRefresh(DateTime.now());
+
   @override
   Widget build(BuildContext context) {
     final pages = [
@@ -98,6 +123,7 @@ class _HomeShellState extends State<HomeShell> {
         healthAgentService: _healthAgentService,
         healthAnalysisRepository: _healthAnalysisRepository,
         recoveryRepository: _recoveryRepository,
+        dailyAgentRepository: _dailyAgentRepository,
         onRecordMeal: _recordMeal,
         onOpenHealth: () => setState(() => _currentIndex = 2),
         isActive: _currentIndex == 0,
