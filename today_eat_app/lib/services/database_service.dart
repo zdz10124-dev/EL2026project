@@ -8,12 +8,55 @@ import '../models/meal_record.dart';
 import '../models/recommendation_upload_task.dart';
 import '../models/exercise_record.dart';
 import '../models/integrated_health_analysis.dart';
+import '../models/recovery_check_in.dart';
 
-class DatabaseService {
+class DatabaseService implements RecoveryStore {
   DatabaseService._();
 
   static final DatabaseService instance = DatabaseService._();
-  static const int _databaseVersion = 7;
+  static const int databaseVersion = 8;
+  static const List<String> agentTableSql = [
+    '''CREATE TABLE IF NOT EXISTS recovery_check_ins(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      local_date TEXT NOT NULL UNIQUE,
+      sleep_quality INTEGER NOT NULL,
+      fatigue INTEGER NOT NULL,
+      soreness INTEGER NOT NULL,
+      energy INTEGER NOT NULL,
+      note TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )''',
+    '''CREATE TABLE IF NOT EXISTS daily_agent_plans(
+      local_date TEXT PRIMARY KEY,
+      data_fingerprint TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      source TEXT NOT NULL,
+      needs_refresh INTEGER NOT NULL DEFAULT 0,
+      generated_at TEXT NOT NULL
+    )''',
+    '''CREATE TABLE IF NOT EXISTS agent_actions(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_action_id TEXT NOT NULL UNIQUE,
+      plan_date TEXT NOT NULL,
+      category TEXT NOT NULL,
+      priority TEXT NOT NULL,
+      title TEXT NOT NULL,
+      action_text TEXT NOT NULL,
+      evidence_json TEXT NOT NULL,
+      target TEXT NOT NULL,
+      status TEXT NOT NULL,
+      difficulty TEXT,
+      feedback_note TEXT,
+      valid_until TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )''',
+    'CREATE INDEX IF NOT EXISTS idx_agent_actions_date_status '
+        'ON agent_actions(plan_date, status)',
+    'CREATE INDEX IF NOT EXISTS idx_agent_actions_updated '
+        'ON agent_actions(updated_at DESC)',
+  ];
 
   Database? _database;
 
@@ -24,12 +67,13 @@ class DatabaseService {
     final dbPath = await getDatabasePath();
     _database = await openDatabase(
       dbPath,
-      version: _databaseVersion,
+      version: databaseVersion,
       onCreate: (db, version) async {
         await _createMealRecordsTable(db);
         await _createUploadTaskTable(db);
         await _createExerciseRecordsTable(db);
         await _createHealthAnalysisCacheTable(db);
+        await _createAgentTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         await _migrateDatabase(db, oldVersion);
@@ -131,6 +175,28 @@ class DatabaseService {
     return maps.isEmpty ? null : ExerciseRecord.fromMap(maps.first);
   }
 
+  @override
+  Future<Map<String, Object?>?> fetchRecoveryCheckIn(String localDate) async {
+    final db = await database;
+    final maps = await db.query(
+      'recovery_check_ins',
+      where: 'local_date = ?',
+      whereArgs: [localDate],
+      limit: 1,
+    );
+    return maps.isEmpty ? null : maps.first;
+  }
+
+  @override
+  Future<void> upsertRecoveryCheckIn(Map<String, Object?> values) async {
+    final db = await database;
+    await db.insert(
+      'recovery_check_ins',
+      values..remove('id'),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
   Future<void> saveHealthAnalysisCache(HealthAnalysisCache cache) async {
     final db = await database;
     await db.insert(
@@ -140,7 +206,9 @@ class DatabaseService {
     );
   }
 
-  Future<HealthAnalysisCache?> fetchHealthAnalysisCache(String periodKey) async {
+  Future<HealthAnalysisCache?> fetchHealthAnalysisCache(
+    String periodKey,
+  ) async {
     final db = await database;
     final maps = await db.query(
       'health_analysis_cache',
@@ -229,7 +297,8 @@ class DatabaseService {
   Future<void> markUploadTaskFailed({
     required String clientRecordId,
     required String error,
-    RecommendationUploadTaskStatus status = RecommendationUploadTaskStatus.failed,
+    RecommendationUploadTaskStatus status =
+        RecommendationUploadTaskStatus.failed,
   }) async {
     final db = await database;
     final existing = await db.query(
@@ -302,10 +371,9 @@ class DatabaseService {
     bool? autoUploadEnabled,
   }) async {
     final db = await database;
-    final values = <String, Object?>{
-      'recommendation_status': status.dbValue,
-    };
-    if (remoteRecommendationId != null || status == LocalRecommendationStatus.localOnly) {
+    final values = <String, Object?>{'recommendation_status': status.dbValue};
+    if (remoteRecommendationId != null ||
+        status == LocalRecommendationStatus.localOnly) {
       values['remote_recommendation_id'] = remoteRecommendationId;
     }
     if (autoUploadEnabled != null) {
@@ -410,6 +478,12 @@ class DatabaseService {
     ''');
   }
 
+  Future<void> _createAgentTables(Database db) async {
+    for (final statement in agentTableSql) {
+      await db.execute(statement);
+    }
+  }
+
   Future<void> _migrateDatabase(Database db, int oldVersion) async {
     final columns = await db.rawQuery('PRAGMA table_info(meal_records)');
     final columnNames = columns
@@ -500,6 +574,9 @@ class DatabaseService {
     }
     if (oldVersion < 7) {
       await _createHealthAnalysisCacheTable(db);
+    }
+    if (oldVersion < 8) {
+      await _createAgentTables(db);
     }
   }
 }
