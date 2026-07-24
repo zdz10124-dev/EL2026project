@@ -19,7 +19,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Literal
 
 import json as json_lib
 
@@ -114,6 +114,32 @@ class HealthAnalysisRequest(BaseModel):
     profile: dict[str, Any] = Field(default_factory=dict)
     metrics: dict[str, Any]
     allowed_evidence: list[str] = Field(default_factory=list, max_length=20)
+
+
+class DailyAgentPlanRequest(BaseModel):
+    context: dict[str, Any]
+    allowed_evidence: list[str] = Field(min_length=1, max_length=30)
+
+
+class DailyAgentAction(BaseModel):
+    category: Literal["diet", "exercise", "rest"]
+    priority: Literal["low", "medium", "high"]
+    title: str = Field(min_length=1, max_length=40)
+    action: str = Field(min_length=1, max_length=160)
+    evidence: list[str] = Field(min_length=1, max_length=5)
+    target: Literal[
+        "recordMeal",
+        "recordExercise",
+        "decideMeal",
+        "recoveryCheckIn",
+        "openHealth",
+        "none",
+    ]
+
+
+class DailyAgentPlanResult(BaseModel):
+    summary: str = Field(min_length=1, max_length=240)
+    actions: list[DailyAgentAction] = Field(min_length=1, max_length=3)
 
 
 app = FastAPI(title="今天吃什么 联网推荐服务", version="1.0.0")
@@ -1365,3 +1391,42 @@ async def analyze_health(
     }
     result = await _request_structured_ai(body)
     return {"success": True, "data": result}
+
+
+@app.post("/v1/ai/daily-plan")
+async def generate_daily_plan(
+    request: DailyAgentPlanRequest,
+    user: dict = Depends(_get_current_user),
+) -> dict[str, Any]:
+    body = {
+        "model": OPENAI_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "你是个人健康 Agent 的行动规划器。只能引用 allowed_evidence 中逐字匹配的依据。"
+                    "输出 summary 和 1 至 3 条 actions，每条含 category、priority、title、action、"
+                    "evidence、target。禁止疾病诊断、处方、治疗和药物建议，只输出 JSON。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": json_lib.dumps(
+                    request.model_dump(mode="json"), ensure_ascii=False
+                ),
+            },
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": 0.2,
+    }
+    result = await _request_structured_ai(body)
+    try:
+        validated = DailyAgentPlanResult.model_validate(result)
+    except Exception as error:
+        raise HTTPException(status_code=502, detail="AI 每日计划格式无效") from error
+
+    allowed_evidence = set(request.allowed_evidence)
+    for action in validated.actions:
+        if not set(action.evidence).issubset(allowed_evidence):
+            raise HTTPException(status_code=502, detail="AI 每日计划引用了未授权依据")
+    return {"success": True, "data": validated.model_dump(mode="json")}

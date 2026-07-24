@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/health_metrics.dart';
 import '../models/health_profile.dart';
+import '../models/health_context.dart';
 import '../models/integrated_health_analysis.dart';
 import 'llm_service.dart';
 
@@ -56,6 +57,21 @@ class HealthApiService {
     return _decodeResponse(response);
   }
 
+  Future<Map<String, dynamic>> generateDailyPlan({
+    required HealthContext context,
+  }) async {
+    final config = _serverConfig();
+    final response = await http.post(
+      Uri.parse('${config.serverUrl}/v1/ai/daily-plan'),
+      headers: {
+        'Authorization': 'Bearer ${config.authToken}',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(buildDailyPlanPayload(context)),
+    ).timeout(const Duration(seconds: 120));
+    return _decodeResponse(response);
+  }
+
   LlmConfig _serverConfig() {
     final config = _llm.config;
     if (config == null ||
@@ -81,3 +97,8 @@ class HealthApiService {
     return (decoded['data'] as Map).cast<String, dynamic>();
   }
 }
+
+Map<String, Object?> buildDailyPlanPayload(HealthContext context) => {
+  'context': context.toPromptJson(),
+  'allowed_evidence': context.allowedEvidence,
+};

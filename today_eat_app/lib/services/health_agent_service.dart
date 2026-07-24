@@ -5,8 +5,11 @@ import '../models/exercise_draft.dart';
 import '../models/exercise_record.dart';
 import '../models/health_metrics.dart';
 import '../models/health_profile.dart';
+import '../models/health_context.dart';
+import '../models/agent_action.dart';
 import '../models/integrated_health_analysis.dart';
 import 'health_api_service.dart';
+import 'agent_plan_parser.dart';
 import 'llm_service.dart';
 
 class HealthAgentService {
@@ -19,6 +22,28 @@ class HealthAgentService {
   final LlmService _llm;
   final HealthApiService _api;
   bool get isAvailable => _llm.isConfigured;
+
+  Future<DailyAgentPlan> generateDailyPlan({
+    required HealthContext context,
+    required String dataFingerprint,
+  }) async {
+    final json = _api.shouldUseServer
+        ? await _api.generateDailyPlan(context: context)
+        : await _llm.callLlm(
+            systemPrompt: _dailyAgentPrompt,
+            userPrompt: jsonEncode(context.toPromptJson()),
+            temperature: 0.2,
+          );
+    return parseAgentPlan(
+      json,
+      AgentPlanParseContext(
+        date: context.date,
+        dataFingerprint: dataFingerprint,
+        allowedEvidence: context.allowedEvidence.toSet(),
+        source: AgentPlanSource.ai,
+      ),
+    );
+  }
 
   Future<ExerciseDraft> analyzeExerciseImages(
     ActivityType activityType,
@@ -227,3 +252,9 @@ const _healthPrompt = '''你是生活方式健康教练。输入中的 metrics �
   }],
   "risk_alerts": ["保守风险提示"]
 }''';
+
+const _dailyAgentPrompt = '''你是个人健康 Agent 的行动规划器。输入数据已由程序在本地计算，
+只能根据 allowed_evidence 逐字引用依据。只输出 JSON 对象，包含 summary 和 actions。
+actions 最多三条；每条必须包含 category(diet|exercise|rest)、priority(low|medium|high)、
+title、action、evidence 和 target(recordMeal|recordExercise|decideMeal|recoveryCheckIn|openHealth|none)。
+禁止疾病诊断、处方、治疗、药物或精确热量结论。''';
