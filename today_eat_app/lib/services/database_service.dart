@@ -7,10 +7,11 @@ import 'package:sqflite/sqflite.dart';
 import '../models/meal_record.dart';
 import '../models/recommendation_upload_task.dart';
 import '../models/exercise_record.dart';
+import '../models/agent_action.dart';
 import '../models/integrated_health_analysis.dart';
 import '../models/recovery_check_in.dart';
 
-class DatabaseService implements RecoveryStore {
+class DatabaseService implements RecoveryStore, AgentActionStore {
   DatabaseService._();
 
   static final DatabaseService instance = DatabaseService._();
@@ -194,6 +195,100 @@ class DatabaseService implements RecoveryStore {
       'recovery_check_ins',
       values..remove('id'),
       conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  @override
+  Future<Map<String, Object?>?> fetchDailyAgentPlan(String localDate) async {
+    final db = await database;
+    final maps = await db.query(
+      'daily_agent_plans',
+      where: 'local_date = ?',
+      whereArgs: [localDate],
+      limit: 1,
+    );
+    return maps.isEmpty ? null : maps.first;
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> fetchAgentActionsForDate(
+    String localDate,
+  ) async {
+    final db = await database;
+    return db.query(
+      'agent_actions',
+      where: 'plan_date = ?',
+      whereArgs: [localDate],
+      orderBy: 'created_at ASC',
+    );
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> fetchAgentActionsSince(
+    String isoDateTime,
+  ) async {
+    final db = await database;
+    return db.query(
+      'agent_actions',
+      where: 'updated_at >= ?',
+      whereArgs: [isoDateTime],
+      orderBy: 'updated_at DESC',
+    );
+  }
+
+  @override
+  Future<void> replaceDailyAgentPlan(
+    Map<String, Object?> plan,
+    List<Map<String, Object?>> actions,
+  ) async {
+    final db = await database;
+    await db.transaction((transaction) async {
+      await transaction.update(
+        'agent_actions',
+        {
+          'status': AgentActionStatus.expired.name,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        where: 'plan_date = ? AND status = ?',
+        whereArgs: [plan['local_date'], AgentActionStatus.pending.name],
+      );
+      await transaction.insert(
+        'daily_agent_plans',
+        Map<String, Object?>.from(plan),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      for (final action in actions) {
+        await transaction.insert(
+          'agent_actions',
+          Map<String, Object?>.from(action)..remove('id'),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+  }
+
+  @override
+  Future<int> updateAgentAction(
+    String clientActionId,
+    Map<String, Object?> values,
+  ) async {
+    final db = await database;
+    return db.update(
+      'agent_actions',
+      values,
+      where: 'client_action_id = ?',
+      whereArgs: [clientActionId],
+    );
+  }
+
+  @override
+  Future<int> markDailyAgentPlanNeedsRefresh(String localDate) async {
+    final db = await database;
+    return db.update(
+      'daily_agent_plans',
+      {'needs_refresh': 1},
+      where: 'local_date = ?',
+      whereArgs: [localDate],
     );
   }
 

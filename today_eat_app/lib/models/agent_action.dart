@@ -19,6 +19,26 @@ enum AgentPlanSource { ai, localFallback }
 
 enum DailyAgentStatus { localFallback, fresh, cached, stale, failure }
 
+abstract interface class AgentActionStore {
+  Future<Map<String, Object?>?> fetchDailyAgentPlan(String localDate);
+
+  Future<List<Map<String, Object?>>> fetchAgentActionsForDate(String localDate);
+
+  Future<List<Map<String, Object?>>> fetchAgentActionsSince(String isoDateTime);
+
+  Future<void> replaceDailyAgentPlan(
+    Map<String, Object?> plan,
+    List<Map<String, Object?>> actions,
+  );
+
+  Future<int> updateAgentAction(
+    String clientActionId,
+    Map<String, Object?> values,
+  );
+
+  Future<int> markDailyAgentPlanNeedsRefresh(String localDate);
+}
+
 class AgentAction {
   const AgentAction({
     required this.clientActionId,
