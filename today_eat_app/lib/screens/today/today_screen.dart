@@ -4,16 +4,19 @@ import 'package:flutter/material.dart';
 
 import '../../models/exercise_record.dart';
 import '../../models/meal_record.dart';
+import '../../models/recovery_check_in.dart';
 import '../../models/integrated_health_analysis.dart';
 import '../../models/ui_config.dart';
 import '../../services/exercise_repository.dart';
 import '../../services/health_agent_service.dart';
 import '../../services/health_analysis_repository.dart';
 import '../../services/meal_repository.dart';
+import '../../services/recovery_repository.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/themed_page_background.dart';
 import '../decide_screen.dart';
 import '../exercise/exercise_editor_screen.dart';
+import '../recovery/recovery_check_in_screen.dart';
 
 class TodayScreen extends StatefulWidget {
   const TodayScreen({
@@ -23,6 +26,7 @@ class TodayScreen extends StatefulWidget {
     required this.exerciseRepository,
     required this.healthAgentService,
     required this.healthAnalysisRepository,
+    required this.recoveryRepository,
     required this.onRecordMeal,
     required this.onOpenHealth,
     required this.isActive,
@@ -33,6 +37,7 @@ class TodayScreen extends StatefulWidget {
   final ExerciseRepository exerciseRepository;
   final HealthAgentService healthAgentService;
   final HealthAnalysisRepository healthAnalysisRepository;
+  final RecoveryRepository recoveryRepository;
   final VoidCallback onRecordMeal;
   final VoidCallback onOpenHealth;
   final bool isActive;
@@ -45,8 +50,10 @@ class _TodayScreenState extends State<TodayScreen> {
   List<MealRecord> _meals = const [];
   List<ExerciseRecord> _exercises = const [];
   List<HealthRecommendation> _recommendations = const [];
+  RecoveryCheckIn? _recovery;
   StreamSubscription<List<MealRecord>>? _mealSubscription;
   StreamSubscription<List<ExerciseRecord>>? _exerciseSubscription;
+  StreamSubscription<RecoveryCheckIn?>? _recoverySubscription;
 
   @override
   void initState() {
@@ -58,6 +65,9 @@ class _TodayScreenState extends State<TodayScreen> {
       records,
     ) {
       if (mounted) setState(() => _exercises = records);
+    });
+    _recoverySubscription = widget.recoveryRepository.watchDate(DateTime.now()).listen((record) {
+      if (mounted) setState(() => _recovery = record);
     });
     _loadInitialData();
   }
@@ -76,6 +86,7 @@ class _TodayScreenState extends State<TodayScreen> {
     final analysis = await widget.healthAnalysisRepository.fetchCachedAnalysis(
       AnalysisPeriod.sevenDays,
     );
+    final recovery = await widget.recoveryRepository.findByDate(DateTime.now());
     if (!mounted) return;
     setState(() {
       _meals = meals;
@@ -86,6 +97,7 @@ class _TodayScreenState extends State<TodayScreen> {
               .take(3)
               .toList() ??
           const [];
+      _recovery = recovery;
     });
   }
 
@@ -93,6 +105,7 @@ class _TodayScreenState extends State<TodayScreen> {
   void dispose() {
     _mealSubscription?.cancel();
     _exerciseSubscription?.cancel();
+    _recoverySubscription?.cancel();
     super.dispose();
   }
 
@@ -186,6 +199,36 @@ class _TodayScreenState extends State<TodayScreen> {
           ),
           const SizedBox(height: 14),
           SectionCard(
+            child: Row(
+              children: [
+                Icon(
+                  _recovery == null ? Icons.bedtime_outlined : Icons.favorite_outline,
+                  size: 30,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('恢复打卡', style: Theme.of(context).textTheme.titleLarge),
+                      const SizedBox(height: 4),
+                      Text(
+                        _recovery == null
+                            ? '花 20 秒记录睡眠、疲劳、酸痛和精力。'
+                            : '已打卡：睡眠 ${_recovery!.sleepQuality}/5，疲劳 ${_recovery!.fatigue}/5',
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: _openRecoveryCheckIn,
+                  child: Text(_recovery == null ? '去打卡' : '修改'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          SectionCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -259,6 +302,20 @@ class _TodayScreenState extends State<TodayScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _openRecoveryCheckIn() async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => RecoveryCheckInScreen(
+          repository: widget.recoveryRepository,
+          date: DateTime.now(),
+        ),
+      ),
+    );
+    if (saved == true) {
+      await _loadInitialData();
+    }
   }
 }
 

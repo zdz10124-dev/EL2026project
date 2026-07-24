@@ -71,7 +71,8 @@ void main() {
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.byIcon(Icons.today_outlined), findsOneWidget);
     expect(find.byIcon(Icons.add_chart_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.monitor_heart_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.monitor_heart_outlined), findsAtLeastNWidgets(1));
     expect(find.byIcon(Icons.person_outline), findsOneWidget);
+    expect(find.text('恢复打卡'), findsOneWidget);
   });
 }

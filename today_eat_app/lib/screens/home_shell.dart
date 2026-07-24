@@ -9,6 +9,7 @@ import '../services/health_analysis_repository.dart';
 import '../services/health_profile_repository.dart';
 import '../services/llm_service.dart';
 import '../services/meal_repository.dart';
+import '../services/recovery_repository.dart';
 import 'capture_screen.dart';
 import 'health/health_hub_screen.dart';
 import 'records/records_screen.dart';
@@ -43,6 +44,7 @@ class _HomeShellState extends State<HomeShell> {
   late final HealthAgentService _healthAgentService;
   late final HealthProfileRepository _healthProfileRepository;
   late final HealthAnalysisRepository _healthAnalysisRepository;
+  late final RecoveryRepository _recoveryRepository;
   int _currentIndex = 0;
 
   @override
@@ -54,6 +56,7 @@ class _HomeShellState extends State<HomeShell> {
     _agentService = AgentService(llmService: _llmService);
     _healthAgentService = HealthAgentService(llmService: _llmService);
     _healthProfileRepository = HealthProfileRepository();
+    _recoveryRepository = RecoveryRepository();
     _healthAnalysisRepository = HealthAnalysisRepository(
       mealRepository: _repository,
       exerciseRepository: _exerciseRepository,
@@ -69,6 +72,7 @@ class _HomeShellState extends State<HomeShell> {
   void dispose() {
     _repository.dispose();
     _exerciseRepository.dispose();
+    _recoveryRepository.dispose();
     super.dispose();
   }
 
@@ -93,6 +97,7 @@ class _HomeShellState extends State<HomeShell> {
         exerciseRepository: _exerciseRepository,
         healthAgentService: _healthAgentService,
         healthAnalysisRepository: _healthAnalysisRepository,
+        recoveryRepository: _recoveryRepository,
         onRecordMeal: _recordMeal,
         onOpenHealth: () => setState(() => _currentIndex = 2),
         isActive: _currentIndex == 0,
