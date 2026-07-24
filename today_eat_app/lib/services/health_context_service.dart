@@ -88,6 +88,8 @@ class HealthContextService {
         '今日肌肉酸痛评分 ${recovery.soreness}/5',
         '今日精力评分 ${recovery.energy}/5',
       ]);
+    } else {
+      values.add('今日尚未完成恢复打卡');
     }
     values.add(todayMealCount == 0 ? '今日尚未记录饮食' : '今日已记录饮食 $todayMealCount 次');
     values.add(todayExerciseMinutes == 0

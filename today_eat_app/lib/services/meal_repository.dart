@@ -114,16 +114,19 @@ class MealRepository {
     ImagePicker? imagePicker,
     AppSettingsService? appSettingsService,
     RecommendationApiService? recommendationApiService,
+    Future<void> Function()? onHealthDataChanged,
   }) : _databaseService = databaseService ?? DatabaseService.instance,
        _imagePicker = imagePicker ?? ImagePicker(),
        _appSettingsService = appSettingsService ?? AppSettingsService(),
        _recommendationApiService =
-           recommendationApiService ?? RecommendationApiService();
+           recommendationApiService ?? RecommendationApiService(),
+       _onHealthDataChanged = onHealthDataChanged;
 
   final DatabaseService _databaseService;
   final ImagePicker _imagePicker;
   final AppSettingsService _appSettingsService;
   final RecommendationApiService _recommendationApiService;
+  final Future<void> Function()? _onHealthDataChanged;
   final StreamController<List<MealRecord>> _recordsController =
       StreamController<List<MealRecord>>.broadcast();
   final Random _random = Random();
@@ -244,6 +247,7 @@ class MealRepository {
     await _databaseService.ensureUploadTasksForRecords([savedRecord]);
     clearDraft();
     await refreshRecords();
+    _notifyHealthDataChanged();
     if (savedRecord.autoUploadEnabled) {
       unawaited(_syncRecordUploadsInBackground());
     }
@@ -299,6 +303,7 @@ class MealRepository {
       await _databaseService.deleteUploadTaskByRecordId(updated.id!);
     }
     await refreshRecords();
+    _notifyHealthDataChanged();
     if (updated.autoUploadEnabled) {
       unawaited(_syncRecordUploadsInBackground());
     }
@@ -387,6 +392,7 @@ class MealRepository {
       await _deleteImageIfExists(path);
     }
     await refreshRecords();
+    _notifyHealthDataChanged();
   }
 
   Future<void> deleteAllRecords() async {
@@ -856,6 +862,13 @@ class MealRepository {
 
   void dispose() {
     _recordsController.close();
+  }
+
+  void _notifyHealthDataChanged() {
+    final callback = _onHealthDataChanged;
+    if (callback != null) {
+      unawaited(callback());
+    }
   }
 
   String formatBytes(int bytes) {

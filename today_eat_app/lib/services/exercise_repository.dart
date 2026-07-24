@@ -12,12 +12,18 @@ import 'database_service.dart';
 import 'exercise_validator.dart';
 
 class ExerciseRepository {
-  ExerciseRepository({DatabaseService? databaseService, ImagePicker? imagePicker})
+  ExerciseRepository({
+    DatabaseService? databaseService,
+    ImagePicker? imagePicker,
+    Future<void> Function()? onHealthDataChanged,
+  })
       : _database = databaseService ?? DatabaseService.instance,
-        _imagePicker = imagePicker ?? ImagePicker();
+        _imagePicker = imagePicker ?? ImagePicker(),
+        _onHealthDataChanged = onHealthDataChanged;
 
   final DatabaseService _database;
   final ImagePicker _imagePicker;
+  final Future<void> Function()? _onHealthDataChanged;
   final _records = StreamController<List<ExerciseRecord>>.broadcast();
   final _random = Random();
 
@@ -67,6 +73,7 @@ class ExerciseRepository {
     final id = await _database.insertExerciseRecord(record);
     final saved = record.copyWith(id: id);
     await refresh();
+    _notifyHealthDataChanged();
     return saved;
   }
 
@@ -74,6 +81,7 @@ class ExerciseRepository {
     if (record.id == null) throw const FormatException('运动记录缺少本地 ID');
     await _database.updateExerciseRecord(record.copyWith(updatedAt: DateTime.now()));
     await refresh();
+    _notifyHealthDataChanged();
   }
 
   Future<void> deleteRecord(ExerciseRecord record) async {
@@ -83,6 +91,7 @@ class ExerciseRepository {
       if (await file.exists()) await file.delete();
     }
     await refresh();
+    _notifyHealthDataChanged();
   }
 
   Future<void> deleteAllRecords() async {
@@ -111,4 +120,9 @@ class ExerciseRepository {
   }
 
   void dispose() => _records.close();
+
+  void _notifyHealthDataChanged() {
+    final callback = _onHealthDataChanged;
+    if (callback != null) unawaited(callback());
+  }
 }
