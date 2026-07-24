@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/recovery_check_in.dart';
 import '../../services/recovery_repository.dart';
+import '../../widgets/themed_page_background.dart';
 
 class RecoveryCheckInScreen extends StatefulWidget {
   const RecoveryCheckInScreen({
@@ -95,10 +96,12 @@ class _RecoveryCheckInScreenState extends State<RecoveryCheckInScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('恢复打卡')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : SafeArea(
+      body: ThemedPageBackground(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : SafeArea(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
                 children: [
@@ -159,7 +162,8 @@ class _RecoveryCheckInScreenState extends State<RecoveryCheckInScreen> {
                   ),
                 ],
               ),
-            ),
+              ),
+      ),
     );
   }
 }
