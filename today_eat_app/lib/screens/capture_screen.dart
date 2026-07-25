@@ -13,7 +13,7 @@ import '../services/meal_repository.dart';
 import '../widgets/rating_stars.dart';
 import '../widgets/section_card.dart';
 import '../widgets/image_viewer.dart';
-import '../widgets/themed_page_background.dart';
+import '../widgets/themed_subpage_scaffold.dart';
 
 class MealCapturePage extends StatelessWidget {
   const MealCapturePage({
@@ -103,6 +103,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   latestImagePath: records.isEmpty
                       ? null
                       : records.first.imagePath,
+                  onTap: _busy ? null : () => _openEditor(fromCamera: true),
                 ),
                 const SizedBox(height: 18),
                 Text(widget.config.capture.cameraHint),
@@ -412,164 +413,154 @@ class _EditMealScreenState extends State<EditMealScreen> {
     final layout = widget.config.layout;
     final capture = widget.config.capture;
     final isEditing = widget.existingRecord != null;
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(title: Text(isEditing ? '编辑记录' : '新增记录')),
-      body: ThemedPageBackground(
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(
-              horizontal: layout.pageHorizontalPadding,
-              vertical: layout.pageVerticalPadding,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Multi-image preview
-                SizedBox(
-                  height: layout.cameraFrameHeight,
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: PageView.builder(
-                          controller: _pageController,
-                          itemCount: _imagePaths.length,
-                          onPageChanged: (i) =>
-                              setState(() => _currentImageIndex = i),
-                          itemBuilder: (_, i) => ClipRRect(
-                            borderRadius: BorderRadius.circular(
-                              layout.cardRadius,
-                            ),
-                            child: Image.file(
-                              File(_imagePaths[i]),
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
+    return ThemedSubpageScaffold(
+      appBar: AppBar(
+        title: Text(
+          isEditing ? '\u7f16\u8f91\u8bb0\u5f55' : '\u65b0\u589e\u8bb0\u5f55',
+        ),
+      ),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.symmetric(
+          horizontal: layout.pageHorizontalPadding,
+          vertical: layout.pageVerticalPadding,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Multi-image preview
+            SizedBox(
+              height: layout.cameraFrameHeight,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: PageView.builder(
+                      controller: _pageController,
+                      itemCount: _imagePaths.length,
+                      onPageChanged: (i) =>
+                          setState(() => _currentImageIndex = i),
+                      itemBuilder: (_, i) => ClipRRect(
+                        borderRadius: BorderRadius.circular(layout.cardRadius),
+                        child: Image.file(
+                          File(_imagePaths[i]),
+                          width: double.infinity,
+                          fit: BoxFit.cover,
                         ),
                       ),
-                      if (_imagePaths.length > 1) ...[
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(
-                            _imagePaths.length,
-                            (i) => Container(
-                              width: 8,
-                              height: 8,
-                              margin: const EdgeInsets.symmetric(horizontal: 3),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: i == _currentImageIndex
-                                    ? Theme.of(context).colorScheme.primary
-                                    : Colors.grey.shade300,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                SectionCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextField(
-                        controller: _dishController,
-                        decoration: InputDecoration(
-                          labelText: capture.dishLabel,
+                  if (_imagePaths.length > 1) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(
+                        _imagePaths.length,
+                        (i) => Container(
+                          width: 8,
+                          height: 8,
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: i == _currentImageIndex
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.grey.shade300,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _locationController,
-                        decoration: InputDecoration(
-                          labelText: capture.locationLabel,
-                          suffixIcon: _locating
-                              ? const Padding(
-                                  padding: EdgeInsets.all(12),
-                                  child: SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  ),
-                                )
-                              : IconButton(
-                                  onPressed: _beginGpsLookup,
-                                  icon: const Icon(Icons.my_location_outlined),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            SectionCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: _dishController,
+                    decoration: InputDecoration(labelText: capture.dishLabel),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _locationController,
+                    decoration: InputDecoration(
+                      labelText: capture.locationLabel,
+                      suffixIcon: _locating
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
                                 ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _locationStatus,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _priceController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: InputDecoration(
-                          labelText: capture.priceLabel,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _commentController,
-                        minLines: 2,
-                        maxLines: 4,
-                        decoration: const InputDecoration(
-                          labelText: '描述',
-                          hintText: '写一下口味、分量、踩雷点或推荐理由',
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '评分',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      RatingStars(
-                        value: _ratingTouched ? _ratingValue : 0,
-                        onChanged: (value) {
-                          setState(() {
-                            _ratingTouched = true;
-                            _ratingValue = value;
-                          });
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('自动上传这条记录'),
-                        subtitle: const Text('关闭后只保存在本地；开启后会尝试同步到联网推荐。'),
-                        value: _autoUploadEnabled,
-                        onChanged: (value) {
-                          setState(() => _autoUploadEnabled = value);
-                        },
-                      ),
-                    ],
+                              ),
+                            )
+                          : IconButton(
+                              onPressed: _beginGpsLookup,
+                              icon: const Icon(Icons.my_location_outlined),
+                            ),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                _buildAiSection(context),
-                const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: _saving ? null : _save,
-                    child: Text(_saving ? '保存中...' : capture.confirmText),
+                  const SizedBox(height: 8),
+                  Text(
+                    _locationStatus,
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _priceController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(labelText: capture.priceLabel),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _commentController,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: '描述',
+                      hintText: '写一下口味、分量、踩雷点或推荐理由',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('评分', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  RatingStars(
+                    value: _ratingTouched ? _ratingValue : 0,
+                    onChanged: (value) {
+                      setState(() {
+                        _ratingTouched = true;
+                        _ratingValue = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('自动上传这条记录'),
+                    subtitle: const Text('关闭后只保存在本地；开启后会尝试同步到联网推荐。'),
+                    value: _autoUploadEnabled,
+                    onChanged: (value) {
+                      setState(() => _autoUploadEnabled = value);
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
+            const SizedBox(height: 14),
+            _buildAiSection(context),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _saving ? null : _save,
+                child: Text(_saving ? '保存中...' : capture.confirmText),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -903,12 +894,6 @@ class _EditMealScreenState extends State<EditMealScreen> {
           _lastLocationResult = updated;
           _locating = false;
           _locationStatus = updated.message;
-          if (_locationController.text.trim().isEmpty &&
-              updated.city?.isNotEmpty == true) {
-            _locationController.text = updated.district?.isNotEmpty == true
-                ? '${updated.city}${updated.district}'
-                : updated.city!;
-          }
         });
       },
     );
@@ -967,62 +952,70 @@ class _EditMealScreenState extends State<EditMealScreen> {
 }
 
 class _PreviewPlaceholder extends StatelessWidget {
-  const _PreviewPlaceholder({required this.config, this.latestImagePath});
+  const _PreviewPlaceholder({
+    required this.config,
+    this.latestImagePath,
+    this.onTap,
+  });
 
   final UiConfig config;
   final String? latestImagePath;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final hasImage =
         latestImagePath != null && File(latestImagePath!).existsSync();
-    return Container(
-      height: config.layout.cameraFrameHeight,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(config.layout.cardRadius),
-        gradient: LinearGradient(
-          colors: [
-            Theme.of(context).colorScheme.primary.withValues(alpha: 0.90),
-            config.theme.accentColor,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: config.layout.cameraFrameHeight,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(config.layout.cardRadius),
+          gradient: LinearGradient(
+            colors: [
+              Theme.of(context).colorScheme.primary.withValues(alpha: 0.90),
+              config.theme.accentColor,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
         ),
-      ),
-      child: hasImage
-          ? ClipRRect(
-              borderRadius: BorderRadius.circular(config.layout.cardRadius),
-              child: Image.file(File(latestImagePath!), fit: BoxFit.cover),
-            )
-          : Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.camera_alt_outlined,
-                  size: 56,
-                  color: Colors.white,
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  '相机预览区域',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(color: Colors.white),
-                ),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 30),
-                  child: Text(
-                    '当前版本使用系统相机或相册完成拍摄与选图。',
-                    textAlign: TextAlign.center,
+        child: hasImage
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(config.layout.cardRadius),
+                child: Image.file(File(latestImagePath!), fit: BoxFit.cover),
+              )
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.camera_alt_outlined,
+                    size: 56,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    '相机预览区域',
                     style: Theme.of(
                       context,
-                    ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
+                    ).textTheme.titleLarge?.copyWith(color: Colors.white),
                   ),
-                ),
-              ],
-            ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 30),
+                    child: Text(
+                      '当前版本使用系统相机或相册完成拍摄与选图。',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
+                    ),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 }

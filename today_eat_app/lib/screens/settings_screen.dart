@@ -19,8 +19,7 @@ import '../services/health_analysis_repository.dart';
 import '../services/health_data_export_service.dart';
 import '../widgets/rating_stars.dart';
 import '../widgets/section_card.dart';
-import '../widgets/themed_page_background.dart';
-import 'health/health_profile_screen.dart';
+import '../widgets/themed_subpage_scaffold.dart';
 import 'package:http/http.dart' as http;
 
 class SettingsScreen extends StatefulWidget {
@@ -167,6 +166,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onChanged: (_) => _openAiConfig(),
                 ),
                 _SettingsSwitchTile(
+                  icon: Icons.location_on_outlined,
+                  title: '定位补全地点',
+                  subtitle: '当前保留开关位置，后续可接入定位。',
+                  value: _autoFillLocation,
+                  onChanged: (value) =>
+                      setState(() => _autoFillLocation = value),
+                ),
+                _SettingsSwitchTile(
+                  icon: Icons.notifications_active_outlined,
+                  title: '营养分析提醒',
+                  subtitle: '后续用于提醒用户查看营养总结。',
+                  value: _nutritionReminder,
+                  onChanged: (value) =>
+                      setState(() => _nutritionReminder = value),
+                ),
+                _SettingsSwitchTile(
                   icon: Icons.public_outlined,
                   title: '是否自动上传记录',
                   subtitle: '开启后，新记录会尝试同步到联网推荐；关闭后仅本地保存。',
@@ -254,11 +269,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _SettingsActionTile(
                   icon: Icons.privacy_tip_outlined,
                   title: '隐私说明',
-                  subtitle: '说明本地数据、社区上传和 AI 分析的数据边界。',
-                  onTap: () => _showInfo(
-                    '隐私说明',
-                    '饮食和运动记录优先保存在本地。仅在开启自动上传时同步饮食推荐数据；AI 分析会按当前模式发送必要的图片或结构化指标。',
-                  ),
+                  subtitle: '说明本地数据和未来联网功能的边界。',
+                  onTap: () =>
+                      _showInfo('隐私说明', '当前记录默认仅保存在本地。公开记录开关未来才会接入联网能力。'),
                 ),
                 _SettingsActionTile(
                   icon: Icons.feedback_outlined,
@@ -271,11 +284,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 18),
             Center(
               child: Text(
-                '愿你每天都能好好吃饭，也好好运动和休息',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: Colors.grey.shade600),
+                '愿你每天都能好好吃饭',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
               ),
             ),
             const SizedBox(height: 16),
@@ -369,30 +381,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     const address = 'https://github.com/zdz10124-dev/EL2026project/issues';
     await Clipboard.setData(const ClipboardData(text: address));
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Issue 反馈地址已复制')));
-  }
-
-  Future<void> _exportData() async {
-    try {
-      final file = await HealthDataExportService(
-        mealRepository: widget.repository,
-        exerciseRepository: widget.exerciseRepository,
-        healthProfileRepository: widget.healthProfileRepository,
-      ).createJsonExport();
-      await SharePlus.instance.share(
-        ShareParams(
-          title: '食动智衡数据导出',
-          text: '食动智衡个人数据导出文件',
-          files: [XFile(file.path, mimeType: 'application/json')],
-        ),
-      );
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('导出失败：$error')));
-      }
-    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('临时缓存已清空')));
   }
 
   Future<void> _togglePublicRecords(bool value) async {
@@ -424,9 +415,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     setState(() => _profile = result);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('昵称和头像已更新')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('昵称和头像已更新')));
   }
 
   Future<void> _deleteAllRecords() async {
@@ -439,8 +430,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.repository.deleteAllRecords();
     await widget.exerciseRepository.deleteAllRecords();
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('已删除全部记录')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('已删除全部记录')));
   }
 
   Future<bool?> _showConfirm({
@@ -473,17 +465,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _openAiConfig() {
     Navigator.of(context)
         .push(
-      MaterialPageRoute(
-        builder: (_) => _AiConfigScreen(llmService: widget.llmService),
-      ),
-    )
+          MaterialPageRoute(
+            builder: (_) => _AiConfigScreen(llmService: widget.llmService),
+          ),
+        )
         .then((changed) {
-      if (changed == true) {
-        _llmConfigured = widget.llmService.isConfigured;
-        setState(() {});
-        widget.onConfigChanged?.call();
-      }
-    });
+          if (changed == true) {
+            _llmConfigured = widget.llmService.isConfigured;
+            setState(() {});
+            widget.onConfigChanged?.call();
+          }
+        });
   }
 }
 
@@ -576,9 +568,9 @@ class _AiConfigScreenState extends State<_AiConfigScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ThemedSubpageScaffold(
       appBar: AppBar(title: const Text('AI 模型配置')),
-      body: SingleChildScrollView(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -649,10 +641,7 @@ class _AiConfigScreenState extends State<_AiConfigScreen> {
 
   List<Widget> _buildDirectMode() {
     return [
-      Text(
-        '配置说明',
-        style: Theme.of(context).textTheme.titleMedium,
-      ),
+      Text('配置说明', style: Theme.of(context).textTheme.titleMedium),
       const SizedBox(height: 8),
       const Text(
         '直接在设备上配置 API Key，调用 OpenAI 兼容接口。'
@@ -698,10 +687,7 @@ class _AiConfigScreenState extends State<_AiConfigScreen> {
 
   List<Widget> _buildServerMode() {
     return [
-      Text(
-        '服务器代理模式',
-        style: Theme.of(context).textTheme.titleMedium,
-      ),
+      Text('服务器代理模式', style: Theme.of(context).textTheme.titleMedium),
       const SizedBox(height: 8),
       const Text(
         'AI 请求通过你的服务器转发，API Key 存储在服务端，客户端不暴露。'
@@ -734,8 +720,9 @@ class _AiConfigScreenState extends State<_AiConfigScreen> {
             labelText: '密码',
             hintText: '输入密码',
             suffixIcon: IconButton(
-              icon:
-                  Icon(_showPassword ? Icons.visibility_off : Icons.visibility),
+              icon: Icon(
+                _showPassword ? Icons.visibility_off : Icons.visibility,
+              ),
               onPressed: () => setState(() => _showPassword = !_showPassword),
             ),
           ),
@@ -783,13 +770,12 @@ class _AiConfigScreenState extends State<_AiConfigScreen> {
           children: [
             const Icon(Icons.check_circle, color: Colors.green, size: 20),
             const SizedBox(width: 8),
-            Text('已登录：$_loggedInUsername',
-                style: const TextStyle(color: Colors.green)),
-            const Spacer(),
-            TextButton(
-              onPressed: _logout,
-              child: const Text('退出'),
+            Text(
+              '已登录：$_loggedInUsername',
+              style: const TextStyle(color: Colors.green),
             ),
+            const Spacer(),
+            TextButton(onPressed: _logout, child: const Text('退出')),
           ],
         ),
       ],
@@ -831,10 +817,7 @@ class _AiConfigScreenState extends State<_AiConfigScreen> {
       final response = await http.post(
         Uri.parse('${serverUrl.replaceAll(RegExp(r'/+$'), '')}$endpoint'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'username': username,
-          'password': password,
-        }),
+        body: jsonEncode({'username': username, 'password': password}),
       );
 
       if (!mounted) return;
@@ -854,9 +837,9 @@ class _AiConfigScreenState extends State<_AiConfigScreen> {
           _passwordController.clear();
         });
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$action成功')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$action成功')));
       } else {
         final body = jsonDecode(response.body) as Map<String, dynamic>;
         setState(() {
@@ -884,9 +867,9 @@ class _AiConfigScreenState extends State<_AiConfigScreen> {
     if (_mode == LlmMode.direct) {
       final key = _apiKeyController.text.trim();
       if (key.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请输入 API Key')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请输入 API Key')));
         return;
       }
       setState(() => _saving = true);
@@ -902,21 +885,23 @@ class _AiConfigScreenState extends State<_AiConfigScreen> {
         );
         if (!mounted) return;
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('配置已保存')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('配置已保存')));
         Navigator.of(context).pop(true);
       } catch (e) {
         if (!mounted) return;
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('保存失败: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('保存失败: $e')));
       }
     } else {
       // Server mode: ensure logged in and server URL saved
       if (_loggedInUsername == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请先注册或登录')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请先注册或登录')));
         return;
       }
       setState(() => _saving = true);
@@ -924,15 +909,16 @@ class _AiConfigScreenState extends State<_AiConfigScreen> {
         // Config already saved during register/login, just pop
         if (!mounted) return;
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('服务器代理模式已就绪')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('服务器代理模式已就绪')));
         Navigator.of(context).pop(true);
       } catch (e) {
         if (!mounted) return;
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('操作失败: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('操作失败: $e')));
       }
     }
   }
@@ -940,8 +926,9 @@ class _AiConfigScreenState extends State<_AiConfigScreen> {
   Future<void> _clearConfig() async {
     await widget.llmService.clearConfig();
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('配置已清除')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('配置已清除')));
     Navigator.of(context).pop(true);
   }
 }
@@ -954,7 +941,8 @@ class LocalDataManagementPage extends StatefulWidget {
   final MealRepository repository;
 
   @override
-  State<LocalDataManagementPage> createState() => _LocalDataManagementPageState();
+  State<LocalDataManagementPage> createState() =>
+      _LocalDataManagementPageState();
 }
 
 class _ProfileEditorPage extends StatefulWidget {
@@ -998,55 +986,46 @@ class _ProfileEditorPageState extends State<_ProfileEditorPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
+    return ThemedSubpageScaffold(
       appBar: AppBar(title: const Text('昵称与头像')),
-      body: ThemedPageBackground(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            SectionCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextField(
-                    controller: _nameController,
-                    maxLength: 16,
-                    decoration: const InputDecoration(
-                      labelText: '昵称',
-                      hintText: '给自己起个容易认出来的名字',
-                    ),
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          SectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _nameController,
+                  maxLength: 16,
+                  decoration: const InputDecoration(
+                    labelText: '昵称',
+                    hintText: '给自己起个容易认出来的名字',
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '头像',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: _avatarOptions.map((avatar) {
-                      final selected = avatar == _selectedAvatar;
-                      return ChoiceChip(
-                        label: Text(avatar, style: const TextStyle(fontSize: 18)),
-                        selected: selected,
-                        onSelected: (_) {
-                          setState(() => _selectedAvatar = avatar);
-                        },
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 8),
+                Text('头像', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: _avatarOptions.map((avatar) {
+                    final selected = avatar == _selectedAvatar;
+                    return ChoiceChip(
+                      label: Text(avatar, style: const TextStyle(fontSize: 18)),
+                      selected: selected,
+                      onSelected: (_) {
+                        setState(() => _selectedAvatar = avatar);
+                      },
+                    );
+                  }).toList(),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: _save,
-              child: const Text('保存资料'),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(onPressed: _save, child: const Text('保存资料')),
+        ],
       ),
     );
   }
@@ -1088,22 +1067,20 @@ class _LocalDataManagementPageState extends State<LocalDataManagementPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
+    return ThemedSubpageScaffold(
       appBar: AppBar(title: const Text('本地数据管理')),
-      body: ThemedPageBackground(
-        child: FutureBuilder<LocalDataSummary>(
-          future: _summaryFuture,
-          builder: (context, summarySnapshot) {
-            return StreamBuilder<List<MealRecord>>(
-              stream: widget.repository.recordsStream,
-              initialData: const [],
-              builder: (context, recordSnapshot) {
-                final records = recordSnapshot.data ?? const <MealRecord>[];
-                final summary = summarySnapshot.data;
-                return ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
+      child: FutureBuilder<LocalDataSummary>(
+        future: _summaryFuture,
+        builder: (context, summarySnapshot) {
+          return StreamBuilder<List<MealRecord>>(
+            stream: widget.repository.recordsStream,
+            initialData: const [],
+            builder: (context, recordSnapshot) {
+              final records = recordSnapshot.data ?? const <MealRecord>[];
+              final summary = summarySnapshot.data;
+              return ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
                   Wrap(
                     spacing: 12,
                     runSpacing: 12,
@@ -1124,13 +1101,14 @@ class _LocalDataManagementPageState extends State<LocalDataManagementPage> {
                         title: '数据库占用',
                         value: summary == null
                             ? '...'
-                            : widget.repository.formatBytes(summary.databaseBytes),
+                            : widget.repository.formatBytes(
+                                summary.databaseBytes,
+                              ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 18),
-                  Text('记录列表',
-                      style: Theme.of(context).textTheme.titleLarge),
+                  Text('记录列表', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 12),
                   if (records.isEmpty)
                     const SectionCard(child: Text('暂无正式记录'))
@@ -1154,28 +1132,29 @@ class _LocalDataManagementPageState extends State<LocalDataManagementPage> {
                                       : Container(
                                           color: Colors.grey.shade200,
                                           child: const Icon(
-                                              Icons.photo_outlined),
+                                            Icons.photo_outlined,
+                                          ),
                                         ),
                                 ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       record.dishName,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleMedium,
                                     ),
                                     const SizedBox(height: 4),
                                     Text(record.location),
                                     const SizedBox(height: 4),
                                     Text(
-                                      DateFormat('MM/dd HH:mm')
-                                          .format(record.createdAt),
+                                      DateFormat(
+                                        'MM/dd HH:mm',
+                                      ).format(record.createdAt),
                                     ),
                                   ],
                                 ),
@@ -1202,8 +1181,9 @@ class _LocalDataManagementPageState extends State<LocalDataManagementPage> {
                                         ),
                                         actions: [
                                           TextButton(
-                                            onPressed: () =>
-                                                Navigator.of(context).pop(false),
+                                            onPressed: () => Navigator.of(
+                                              context,
+                                            ).pop(false),
                                             child: const Text('取消'),
                                           ),
                                           FilledButton(
@@ -1215,12 +1195,16 @@ class _LocalDataManagementPageState extends State<LocalDataManagementPage> {
                                       ),
                                     );
                                     if (confirm == true) {
-                                      await widget.repository.deleteRecord(record);
+                                      await widget.repository.deleteRecord(
+                                        record,
+                                      );
                                       await _reload();
                                       if (!mounted) {
                                         return;
                                       }
-                                      ScaffoldMessenger.of(this.context).showSnackBar(
+                                      ScaffoldMessenger.of(
+                                        this.context,
+                                      ).showSnackBar(
                                         const SnackBar(content: Text('已删除该记录')),
                                       );
                                     }
@@ -1242,12 +1226,11 @@ class _LocalDataManagementPageState extends State<LocalDataManagementPage> {
                         ),
                       ),
                     ),
-                  ],
-                );
-              },
-            );
-          },
-        ),
+                ],
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -1304,13 +1287,11 @@ class _RecordEditorPageState extends State<RecordEditorPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
+    return ThemedSubpageScaffold(
       appBar: AppBar(title: const Text('编辑记录')),
-      body: ThemedPageBackground(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
           if (File(widget.record.imagePath).existsSync())
             ClipRRect(
               borderRadius: BorderRadius.circular(20),
@@ -1372,12 +1353,11 @@ class _RecordEditorPageState extends State<RecordEditorPage> {
             ),
           ),
           const SizedBox(height: 18),
-            FilledButton(
-              onPressed: _saving ? null : _save,
-              child: const Text('保存修改'),
-            ),
-          ],
-        ),
+          FilledButton(
+            onPressed: _saving ? null : _save,
+            child: const Text('保存修改'),
+          ),
+        ],
       ),
     );
   }

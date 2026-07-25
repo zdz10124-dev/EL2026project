@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'models/style_presets.dart';
 import 'models/ui_config.dart';
@@ -36,6 +37,8 @@ class _TodayEatAppState extends State<TodayEatApp> {
   @override
   Widget build(BuildContext context) {
     final theme = AppStyleCatalog.buildTheme(widget.config, _appStyleId);
+    final chrome = AppStyleCatalog.styleById(_appStyleId);
+    SystemChrome.setSystemUIOverlayStyle(chrome.overlayStyle);
     return MaterialApp(
       title: widget.config.appTitle,
       debugShowCheckedModeBanner: false,
@@ -52,9 +55,7 @@ class _TodayEatAppState extends State<TodayEatApp> {
                 _setDiaryStyle(value);
               },
             )
-          : const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            ),
+          : const Scaffold(body: Center(child: CircularProgressIndicator())),
     );
   }
 

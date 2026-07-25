@@ -138,8 +138,8 @@ class MealRepository {
   Stream<List<MealRecord>> get recordsStream => _recordsController.stream;
 
   Future<void> initialize() async {
-    _autoUploadRecordsEnabled =
-        await _appSettingsService.getAutoUploadRecordsEnabled();
+    _autoUploadRecordsEnabled = await _appSettingsService
+        .getAutoUploadRecordsEnabled();
     await refreshRecords();
   }
 
@@ -407,8 +407,8 @@ class MealRepository {
   }
 
   Future<bool> getPublicRecordsEnabled() async {
-    _autoUploadRecordsEnabled =
-        await _appSettingsService.getAutoUploadRecordsEnabled();
+    _autoUploadRecordsEnabled = await _appSettingsService
+        .getAutoUploadRecordsEnabled();
     return _autoUploadRecordsEnabled;
   }
 
@@ -492,8 +492,7 @@ class MealRepository {
         await _databaseService.markUploadTaskFailed(
           clientRecordId: record.clientRecordId,
           error: lastError,
-          status:
-              error is RecommendationApiException && !error.shouldRetry
+          status: error is RecommendationApiException && !error.shouldRetry
               ? RecommendationUploadTaskStatus.invalid
               : RecommendationUploadTaskStatus.failed,
         );
@@ -550,8 +549,8 @@ class MealRepository {
       recommendationStatus: enabled
           ? LocalRecommendationStatus.pendingUpload
           : (record.remoteRecommendationId?.isNotEmpty == true
-              ? LocalRecommendationStatus.unlisted
-              : LocalRecommendationStatus.localOnly),
+                ? LocalRecommendationStatus.unlisted
+                : LocalRecommendationStatus.localOnly),
     );
     await _databaseService.updateRecord(updated);
     if (enabled) {
@@ -564,10 +563,7 @@ class MealRepository {
       unawaited(_syncRecordUploadsInBackground());
     } else if (record.remoteRecommendationId?.isNotEmpty == true) {
       unawaited(
-        _pushRecommendationVisibilityInBackground(
-          updated,
-          active: false,
-        ),
+        _pushRecommendationVisibilityInBackground(updated, active: false),
       );
     } else {
       await _databaseService.updateRecommendationSyncState(
@@ -584,7 +580,8 @@ class MealRepository {
     MealRecord record, {
     required bool active,
   }) async {
-    if (record.id == null || record.remoteRecommendationId?.isNotEmpty != true) {
+    if (record.id == null ||
+        record.remoteRecommendationId?.isNotEmpty != true) {
       return;
     }
     await _databaseService.updateRecommendationSyncState(
@@ -925,7 +922,17 @@ class MealRepository {
         .replaceAll('米饭', '饭')
         .replaceAll('白米饭', '饭');
     value = value.replaceAll(RegExp(r'[\s,，.。!！?？\-_/\\()（）【】\[\]]+'), '');
-    for (final suffix in const ['套餐', '盖饭', '便当', '小份', '大份', '中份', '微辣', '中辣', '特辣']) {
+    for (final suffix in const [
+      '套餐',
+      '盖饭',
+      '便当',
+      '小份',
+      '大份',
+      '中份',
+      '微辣',
+      '中辣',
+      '特辣',
+    ]) {
       if (value.endsWith(suffix) && value.length > suffix.length + 1) {
         value = value.substring(0, value.length - suffix.length);
       }

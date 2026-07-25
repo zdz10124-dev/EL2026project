@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'ui_config.dart';
 
@@ -66,7 +67,8 @@ class AppChromeTheme extends ThemeExtension<AppChromeTheme> {
       heroStart: heroStart ?? this.heroStart,
       heroEnd: heroEnd ?? this.heroEnd,
       backgroundAssetPath: backgroundAssetPath ?? this.backgroundAssetPath,
-      decideButtonAssetPath: decideButtonAssetPath ?? this.decideButtonAssetPath,
+      decideButtonAssetPath:
+          decideButtonAssetPath ?? this.decideButtonAssetPath,
     );
   }
 
@@ -83,18 +85,23 @@ class AppChromeTheme extends ThemeExtension<AppChromeTheme> {
       name: t < 0.5 ? name : other.name,
       subtitle: t < 0.5 ? subtitle : other.subtitle,
       backgroundTop: Color.lerp(backgroundTop, other.backgroundTop, t)!,
-      backgroundBottom:
-          Color.lerp(backgroundBottom, other.backgroundBottom, t)!,
+      backgroundBottom: Color.lerp(
+        backgroundBottom,
+        other.backgroundBottom,
+        t,
+      )!,
       ornamentColor: Color.lerp(ornamentColor, other.ornamentColor, t)!,
       cardColor: Color.lerp(cardColor, other.cardColor, t)!,
-      cardBorderColor:
-          Color.lerp(cardBorderColor, other.cardBorderColor, t)!,
+      cardBorderColor: Color.lerp(cardBorderColor, other.cardBorderColor, t)!,
       shadowColor: Color.lerp(shadowColor, other.shadowColor, t)!,
       heroStart: Color.lerp(heroStart, other.heroStart, t)!,
       heroEnd: Color.lerp(heroEnd, other.heroEnd, t)!,
-      backgroundAssetPath: t < 0.5 ? backgroundAssetPath : other.backgroundAssetPath,
-      decideButtonAssetPath:
-          t < 0.5 ? decideButtonAssetPath : other.decideButtonAssetPath,
+      backgroundAssetPath: t < 0.5
+          ? backgroundAssetPath
+          : other.backgroundAssetPath,
+      decideButtonAssetPath: t < 0.5
+          ? decideButtonAssetPath
+          : other.decideButtonAssetPath,
     );
   }
 }
@@ -284,6 +291,7 @@ class AppStyleCatalog {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
+        systemOverlayStyle: chrome.overlayStyle,
         titleTextStyle: TextStyle(
           color: chrome.inkOnSurface,
           fontSize: 22,
@@ -295,10 +303,7 @@ class AppStyleCatalog {
         backgroundColor: chrome.cardColor.withValues(alpha: 0.78),
         indicatorColor: chrome.heroEnd.withValues(alpha: 0.18),
         labelTextStyle: WidgetStatePropertyAll(
-          TextStyle(
-            color: chrome.inkOnSurface,
-            fontWeight: FontWeight.w600,
-          ),
+          TextStyle(color: chrome.inkOnSurface, fontWeight: FontWeight.w600),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -372,9 +377,23 @@ extension AppChromeThemeAccess on BuildContext {
       AppStyleCatalog.styleById(AppStyleId.marketDay);
 }
 
-extension on AppChromeTheme {
+extension AppChromeThemeHelpers on AppChromeTheme {
   Color get inkOnSurface {
     final estimate = ThemeData.estimateBrightnessForColor(cardColor);
     return estimate == Brightness.dark ? Colors.white : const Color(0xFF2E241F);
+  }
+
+  SystemUiOverlayStyle get overlayStyle {
+    final darkIcons =
+        ThemeData.estimateBrightnessForColor(backgroundTop) != Brightness.dark;
+    return SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: darkIcons ? Brightness.dark : Brightness.light,
+      statusBarBrightness: darkIcons ? Brightness.light : Brightness.dark,
+      systemNavigationBarColor: backgroundBottom,
+      systemNavigationBarIconBrightness: darkIcons
+          ? Brightness.dark
+          : Brightness.light,
+    );
   }
 }
