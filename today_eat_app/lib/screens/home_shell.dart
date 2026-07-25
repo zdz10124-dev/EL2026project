@@ -3,12 +3,21 @@ import 'package:flutter/material.dart';
 import '../models/style_presets.dart';
 import '../models/ui_config.dart';
 import '../services/agent_service.dart';
+import '../services/exercise_repository.dart';
+import '../services/health_agent_service.dart';
+import '../services/health_analysis_repository.dart';
+import '../services/health_profile_repository.dart';
 import '../services/llm_service.dart';
 import '../services/meal_repository.dart';
+import '../services/recovery_repository.dart';
+import '../services/agent_action_repository.dart';
+import '../services/daily_agent_repository.dart';
+import '../services/health_context_service.dart';
 import 'capture_screen.dart';
-import 'decide_screen.dart';
-import 'insights_screen.dart';
+import 'health/health_hub_screen.dart';
+import 'records/records_screen.dart';
 import 'settings_screen.dart';
+import 'today/today_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({
@@ -32,47 +41,115 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   late final MealRepository _repository;
+  late final ExerciseRepository _exerciseRepository;
   late final LlmService _llmService;
   late final AgentService _agentService;
+  late final HealthAgentService _healthAgentService;
+  late final HealthProfileRepository _healthProfileRepository;
+  late final HealthAnalysisRepository _healthAnalysisRepository;
+  late final RecoveryRepository _recoveryRepository;
+  late final AgentActionRepository _agentActionRepository;
+  late final HealthContextService _healthContextService;
+  late final DailyAgentRepository _dailyAgentRepository;
   int _currentIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _repository = MealRepository()..initialize();
+    _agentActionRepository = AgentActionRepository();
+    _healthContextService = HealthContextService();
+    _repository = MealRepository(onHealthDataChanged: _markAgentPlanNeedsRefresh)
+      ..initialize();
+    _exerciseRepository = ExerciseRepository(
+      onHealthDataChanged: _markAgentPlanNeedsRefresh,
+    )..initialize();
     _llmService = LlmService();
     _agentService = AgentService(llmService: _llmService);
-    _llmService.loadConfig();
+    _healthAgentService = HealthAgentService(llmService: _llmService);
+    _healthProfileRepository = HealthProfileRepository(
+      onHealthDataChanged: _markAgentPlanNeedsRefresh,
+    );
+    _recoveryRepository = RecoveryRepository();
+    _healthAnalysisRepository = HealthAnalysisRepository(
+      mealRepository: _repository,
+      exerciseRepository: _exerciseRepository,
+      profileRepository: _healthProfileRepository,
+      agentService: _healthAgentService,
+    );
+    _dailyAgentRepository = DailyAgentRepository(
+      mealRepository: _repository,
+      exerciseRepository: _exerciseRepository,
+      recoveryRepository: _recoveryRepository,
+      profileRepository: _healthProfileRepository,
+      actionRepository: _agentActionRepository,
+      contextService: _healthContextService,
+      agentService: _healthAgentService,
+    );
+    _llmService.loadConfig().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _repository.dispose();
+    _exerciseRepository.dispose();
+    _recoveryRepository.dispose();
     super.dispose();
   }
+
+  Future<void> _recordMeal() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MealCapturePage(
+          config: widget.config,
+          repository: _repository,
+          agentService: _agentService,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _markAgentPlanNeedsRefresh() =>
+      _dailyAgentRepository.markNeedsRefresh(DateTime.now());
 
   @override
   Widget build(BuildContext context) {
     final pages = [
-      CaptureScreen(
+      TodayScreen(
         config: widget.config,
-        repository: _repository,
-        agentService: _agentService,
+        mealRepository: _repository,
+        exerciseRepository: _exerciseRepository,
+        healthAgentService: _healthAgentService,
+        healthAnalysisRepository: _healthAnalysisRepository,
+        recoveryRepository: _recoveryRepository,
+        dailyAgentRepository: _dailyAgentRepository,
+        onRecordMeal: _recordMeal,
+        onOpenHealth: () => setState(() => _currentIndex = 2),
+        isActive: _currentIndex == 0,
       ),
-      DecideScreen(
+      RecordsScreen(
         config: widget.config,
-        repository: _repository,
-        isActive: _currentIndex == 1,
+        mealRepository: _repository,
+        exerciseRepository: _exerciseRepository,
+        mealAgentService: _agentService,
+        healthAgentService: _healthAgentService,
       ),
-      InsightsScreen(
+      HealthHubScreen(
         config: widget.config,
-        repository: _repository,
-        agentService: _agentService,
-        defaultDiaryStyleId: widget.currentDiaryStyleId,
+        mealRepository: _repository,
+        mealAgentService: _agentService,
+        analysisRepository: _healthAnalysisRepository,
+        profileRepository: _healthProfileRepository,
+        diaryStyleId: widget.currentDiaryStyleId,
+        agentActionRepository: _agentActionRepository,
       ),
       SettingsScreen(
         config: widget.config,
         repository: _repository,
+        exerciseRepository: _exerciseRepository,
+        healthProfileRepository: _healthProfileRepository,
+        healthAnalysisRepository: _healthAnalysisRepository,
         llmService: _llmService,
         currentAppStyleId: widget.currentAppStyleId,
         currentDiaryStyleId: widget.currentDiaryStyleId,
@@ -94,20 +171,20 @@ class _HomeShellState extends State<HomeShell> {
         onDestinationSelected: (index) => setState(() => _currentIndex = index),
         destinations: [
           NavigationDestination(
-            icon: const Icon(Icons.photo_camera_outlined),
-            label: widget.config.pages.recordTab,
+            icon: const Icon(Icons.today_outlined),
+            label: '今天',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.ramen_dining_outlined),
-            label: widget.config.pages.decideTab,
+            icon: const Icon(Icons.add_chart_outlined),
+            label: '记录',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.dashboard_outlined),
-            label: widget.config.pages.insightTab,
+            icon: const Icon(Icons.monitor_heart_outlined),
+            label: '健康',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.settings_outlined),
-            label: widget.config.pages.settingsTab,
+            icon: const Icon(Icons.person_outline),
+            label: '我的',
           ),
         ],
       ),
@@ -201,7 +278,9 @@ class _BackdropAccent extends StatelessWidget {
             Positioned(
               top: 110,
               left: 20,
-              child: _CheckerStrip(color: chrome.heroStart.withValues(alpha: 0.18)),
+              child: _CheckerStrip(
+                color: chrome.heroStart.withValues(alpha: 0.18),
+              ),
             ),
             Positioned(
               bottom: 150,
@@ -219,7 +298,9 @@ class _BackdropAccent extends StatelessWidget {
             Positioned(
               top: 120,
               right: 24,
-              child: _LeafBranch(color: chrome.heroStart.withValues(alpha: 0.18)),
+              child: _LeafBranch(
+                color: chrome.heroStart.withValues(alpha: 0.18),
+              ),
             ),
             Positioned(
               bottom: 170,
@@ -269,10 +350,7 @@ class _AccentDots extends StatelessWidget {
         (_) => Container(
           width: 8,
           height: 8,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
       ),
     );
@@ -298,9 +376,9 @@ class _AccentLabel extends StatelessWidget {
         child: Text(
           text.toUpperCase(),
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                letterSpacing: 1.4,
-                fontWeight: FontWeight.w800,
-              ),
+            letterSpacing: 1.4,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ),
     );

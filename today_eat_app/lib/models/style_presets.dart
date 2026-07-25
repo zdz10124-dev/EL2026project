@@ -287,7 +287,7 @@ class AppStyleCatalog {
         behavior: SnackBarBehavior.floating,
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: Colors.transparent,
+        backgroundColor: chrome.backgroundTop,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,

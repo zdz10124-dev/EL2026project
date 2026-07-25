@@ -15,6 +15,32 @@ import '../widgets/section_card.dart';
 import '../widgets/image_viewer.dart';
 import '../widgets/themed_subpage_scaffold.dart';
 
+class MealCapturePage extends StatelessWidget {
+  const MealCapturePage({
+    super.key,
+    required this.config,
+    required this.repository,
+    required this.agentService,
+  });
+
+  final UiConfig config;
+  final MealRepository repository;
+  final AgentService agentService;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.transparent,
+    appBar: AppBar(title: const Text('记录饮食')),
+    body: ThemedPageBackground(
+      child: CaptureScreen(
+        config: config,
+        repository: repository,
+        agentService: agentService,
+      ),
+    ),
+  );
+}
+
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({
     super.key,
@@ -775,10 +801,11 @@ class _EditMealScreenState extends State<EditMealScreen> {
   void _adoptField(String key) {
     setState(() {
       _acceptedFields.add(key);
-      if (key == 'dishName' && _aiDishName?.isNotEmpty == true)
+      if (key == 'dishName' && _aiDishName?.isNotEmpty == true) {
         _dishController.text = _aiDishName!;
-      else if (key == 'mainDish' && _aiMainDish?.isNotEmpty == true)
+      } else if (key == 'mainDish' && _aiMainDish?.isNotEmpty == true) {
         _dishController.text = _aiMainDish!;
+      }
     });
   }
 

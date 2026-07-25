@@ -2,8 +2,8 @@
 <uiConfig>
   <!-- 全局应用文案：可直接修改应用标题、页签名字与按钮文字。 -->
   <app>
-    <title>今天吃什么</title>
-    <subtitle>把每一顿认真记下来</subtitle>
+    <title>食动智衡</title>
+    <subtitle>把饮食、运动与恢复放进同一个健康闭环</subtitle>
   </app>
 
   <!-- 主题色：填写十六进制颜色，格式为 #RRGGBB。 -->
@@ -57,8 +57,8 @@
     <recordTab>记录</recordTab>
     <decideTab>吃什么</decideTab>
     <insightTab>其他</insightTab>
-    <settingsTab>设置</settingsTab>
+    <settingsTab>我的</settingsTab>
     <insightTitle>其他功能</insightTitle>
-    <settingsTitle>设置</settingsTitle>
+    <settingsTitle>我的</settingsTitle>
   </pages>
 </uiConfig>

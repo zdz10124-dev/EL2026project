@@ -50,7 +50,7 @@ import 'app_settings_service.dart';
 import 'database_service.dart';
 import 'recommendation_api_service.dart';
 
-enum DecisionMode { random, preference }
+enum DecisionMode { healthContext, random, preference }
 
 enum StatsRangePreset { last7Days, last30Days, custom }
 
@@ -114,16 +114,19 @@ class MealRepository {
     ImagePicker? imagePicker,
     AppSettingsService? appSettingsService,
     RecommendationApiService? recommendationApiService,
+    Future<void> Function()? onHealthDataChanged,
   }) : _databaseService = databaseService ?? DatabaseService.instance,
        _imagePicker = imagePicker ?? ImagePicker(),
        _appSettingsService = appSettingsService ?? AppSettingsService(),
        _recommendationApiService =
-           recommendationApiService ?? RecommendationApiService();
+           recommendationApiService ?? RecommendationApiService(),
+       _onHealthDataChanged = onHealthDataChanged;
 
   final DatabaseService _databaseService;
   final ImagePicker _imagePicker;
   final AppSettingsService _appSettingsService;
   final RecommendationApiService _recommendationApiService;
+  final Future<void> Function()? _onHealthDataChanged;
   final StreamController<List<MealRecord>> _recordsController =
       StreamController<List<MealRecord>>.broadcast();
   final Random _random = Random();
@@ -206,8 +209,10 @@ class MealRepository {
     double? latitude,
     double? longitude,
     bool? autoUploadEnabled,
+    DateTime? occurredAt,
   }) async {
-    final now = DateTime.now();
+    final now = occurredAt ?? DateTime.now();
+    final updatedAt = DateTime.now();
     final savedPaths = <String>[];
     for (final src in sourceImagePaths) {
       savedPaths.add(await _copyImageToAppDir(src));
@@ -215,7 +220,7 @@ class MealRepository {
     final record = buildRecord(
       clientRecordId: _generateClientRecordId(now),
       createdAt: now,
-      updatedAt: now,
+      updatedAt: updatedAt,
       imagePaths: savedPaths,
       dishNameInput: dishNameInput,
       locationInput: locationInput,
@@ -242,6 +247,7 @@ class MealRepository {
     await _databaseService.ensureUploadTasksForRecords([savedRecord]);
     clearDraft();
     await refreshRecords();
+    _notifyHealthDataChanged();
     if (savedRecord.autoUploadEnabled) {
       unawaited(_syncRecordUploadsInBackground());
     }
@@ -271,6 +277,13 @@ class MealRepository {
       locationInput: locationInput,
       priceText: priceText,
       ratingScore: ratingScore,
+      aiMainDish: original.mainDish,
+      aiSideDish: original.sideDish,
+      aiDrink: original.drink,
+      aiSnack: original.snack,
+      aiSpiceLevel: original.spiceLevel,
+      aiIngredients: original.ingredients,
+      aiCuisine: original.cuisine,
       commentInput: commentInput ?? original.comment,
       province: province ?? original.province,
       city: city ?? original.city,
@@ -290,6 +303,7 @@ class MealRepository {
       await _databaseService.deleteUploadTaskByRecordId(updated.id!);
     }
     await refreshRecords();
+    _notifyHealthDataChanged();
     if (updated.autoUploadEnabled) {
       unawaited(_syncRecordUploadsInBackground());
     }
@@ -378,6 +392,7 @@ class MealRepository {
       await _deleteImageIfExists(path);
     }
     await refreshRecords();
+    _notifyHealthDataChanged();
   }
 
   Future<void> deleteAllRecords() async {
@@ -680,6 +695,12 @@ class MealRepository {
       );
     }
 
+    if (mode == DecisionMode.healthContext) {
+      return MealSuggestion(
+        title: '先记录今天的状态',
+        reason: '从今日主行动进入可获得结合恢复、饮食与运动的健康场景建议。',
+      );
+    }
     if (mode == DecisionMode.random) {
       final record = candidates[_random.nextInt(candidates.length)];
       return MealSuggestion(
@@ -844,6 +865,13 @@ class MealRepository {
 
   void dispose() {
     _recordsController.close();
+  }
+
+  void _notifyHealthDataChanged() {
+    final callback = _onHealthDataChanged;
+    if (callback != null) {
+      unawaited(callback());
+    }
   }
 
   String formatBytes(int bytes) {

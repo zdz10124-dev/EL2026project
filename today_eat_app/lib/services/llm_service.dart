@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import 'llm_json_parser.dart';
+
 enum LlmMode { direct, server }
 
 class LlmConfig {
@@ -342,12 +344,12 @@ class LlmService {
       }
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final content = data['choices']?[0]?['message']?['content'] as String?;
-    if (content == null || content.isEmpty) {
-      throw LlmException('AI 返回内容为空');
-    }
+      final content = data['choices']?[0]?['message']?['content'] as String?;
+      if (content == null || content.isEmpty) {
+        throw LlmException('AI 返回内容为空');
+      }
 
-    return jsonDecode(content) as Map<String, dynamic>;
+      return parseLlmJsonObject(content);
     } catch (e) {
       throw LlmException('${_targetDesc}: $e');
     }
@@ -367,7 +369,7 @@ class LlmService {
       throw LlmException('LLM 返回内容为空');
     }
 
-    return jsonDecode(content) as Map<String, dynamic>;
+    return parseLlmJsonObject(content);
   }
 
   void _ensureConfigured() {

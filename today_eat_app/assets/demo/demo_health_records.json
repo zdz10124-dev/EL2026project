@@ -1,0 +1,34 @@
+{
+  "description": "比赛演示用脱敏数据，不会由应用自动导入",
+  "meals": [
+    {
+      "day_offset": -2,
+      "dish_name": "鸡肉蔬菜饭",
+      "ingredients": "鸡肉, 西兰花, 米饭",
+      "drink": "水"
+    },
+    {
+      "day_offset": -1,
+      "dish_name": "番茄鸡蛋面",
+      "ingredients": "番茄, 鸡蛋, 面条",
+      "drink": "无糖茶"
+    }
+  ],
+  "exercises": [
+    {
+      "day_offset": -2,
+      "activity_type": "running",
+      "duration_seconds": 2100,
+      "distance_meters": 5200,
+      "average_heart_rate_bpm": 148,
+      "rpe": 7
+    },
+    {
+      "day_offset": -1,
+      "activity_type": "walking",
+      "duration_seconds": 2400,
+      "distance_meters": 3100,
+      "rpe": 3
+    }
+  ]
+}

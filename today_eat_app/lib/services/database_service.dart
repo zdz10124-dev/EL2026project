@@ -6,12 +6,58 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/meal_record.dart';
 import '../models/recommendation_upload_task.dart';
+import '../models/exercise_record.dart';
+import '../models/agent_action.dart';
+import '../models/integrated_health_analysis.dart';
+import '../models/recovery_check_in.dart';
 
-class DatabaseService {
+class DatabaseService implements RecoveryStore, AgentActionStore {
   DatabaseService._();
 
   static final DatabaseService instance = DatabaseService._();
-  static const int _databaseVersion = 5;
+  static const int databaseVersion = 8;
+  static const List<String> agentTableSql = [
+    '''CREATE TABLE IF NOT EXISTS recovery_check_ins(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      local_date TEXT NOT NULL UNIQUE,
+      sleep_quality INTEGER NOT NULL,
+      fatigue INTEGER NOT NULL,
+      soreness INTEGER NOT NULL,
+      energy INTEGER NOT NULL,
+      note TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )''',
+    '''CREATE TABLE IF NOT EXISTS daily_agent_plans(
+      local_date TEXT PRIMARY KEY,
+      data_fingerprint TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      source TEXT NOT NULL,
+      needs_refresh INTEGER NOT NULL DEFAULT 0,
+      generated_at TEXT NOT NULL
+    )''',
+    '''CREATE TABLE IF NOT EXISTS agent_actions(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_action_id TEXT NOT NULL UNIQUE,
+      plan_date TEXT NOT NULL,
+      category TEXT NOT NULL,
+      priority TEXT NOT NULL,
+      title TEXT NOT NULL,
+      action_text TEXT NOT NULL,
+      evidence_json TEXT NOT NULL,
+      target TEXT NOT NULL,
+      status TEXT NOT NULL,
+      difficulty TEXT,
+      feedback_note TEXT,
+      valid_until TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )''',
+    'CREATE INDEX IF NOT EXISTS idx_agent_actions_date_status '
+        'ON agent_actions(plan_date, status)',
+    'CREATE INDEX IF NOT EXISTS idx_agent_actions_updated '
+        'ON agent_actions(updated_at DESC)',
+  ];
 
   Database? _database;
 
@@ -22,10 +68,13 @@ class DatabaseService {
     final dbPath = await getDatabasePath();
     _database = await openDatabase(
       dbPath,
-      version: _databaseVersion,
+      version: databaseVersion,
       onCreate: (db, version) async {
         await _createMealRecordsTable(db);
         await _createUploadTaskTable(db);
+        await _createExerciseRecordsTable(db);
+        await _createHealthAnalysisCacheTable(db);
+        await _createAgentTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         await _migrateDatabase(db, oldVersion);
@@ -83,6 +132,191 @@ class DatabaseService {
       return null;
     }
     return MealRecord.fromMap(maps.first);
+  }
+
+  Future<int> insertExerciseRecord(ExerciseRecord record) async {
+    final db = await database;
+    return db.insert('exercise_records', record.toMap()..remove('id'));
+  }
+
+  Future<int> updateExerciseRecord(ExerciseRecord record) async {
+    final db = await database;
+    return db.update(
+      'exercise_records',
+      record.toMap()..remove('id'),
+      where: 'id = ?',
+      whereArgs: [record.id],
+    );
+  }
+
+  Future<int> deleteExerciseRecord(int id) async {
+    final db = await database;
+    return db.delete('exercise_records', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> deleteAllExerciseRecords() async {
+    final db = await database;
+    return db.delete('exercise_records');
+  }
+
+  Future<List<ExerciseRecord>> fetchExerciseRecords() async {
+    final db = await database;
+    final maps = await db.query('exercise_records', orderBy: 'started_at DESC');
+    return maps.map(ExerciseRecord.fromMap).toList();
+  }
+
+  Future<ExerciseRecord?> fetchExerciseRecordById(int id) async {
+    final db = await database;
+    final maps = await db.query(
+      'exercise_records',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    return maps.isEmpty ? null : ExerciseRecord.fromMap(maps.first);
+  }
+
+  @override
+  Future<Map<String, Object?>?> fetchRecoveryCheckIn(String localDate) async {
+    final db = await database;
+    final maps = await db.query(
+      'recovery_check_ins',
+      where: 'local_date = ?',
+      whereArgs: [localDate],
+      limit: 1,
+    );
+    return maps.isEmpty ? null : maps.first;
+  }
+
+  @override
+  Future<void> upsertRecoveryCheckIn(Map<String, Object?> values) async {
+    final db = await database;
+    await db.insert(
+      'recovery_check_ins',
+      values..remove('id'),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  @override
+  Future<Map<String, Object?>?> fetchDailyAgentPlan(String localDate) async {
+    final db = await database;
+    final maps = await db.query(
+      'daily_agent_plans',
+      where: 'local_date = ?',
+      whereArgs: [localDate],
+      limit: 1,
+    );
+    return maps.isEmpty ? null : maps.first;
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> fetchAgentActionsForDate(
+    String localDate,
+  ) async {
+    final db = await database;
+    return db.query(
+      'agent_actions',
+      where: 'plan_date = ?',
+      whereArgs: [localDate],
+      orderBy: 'created_at ASC',
+    );
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> fetchAgentActionsSince(
+    String isoDateTime,
+  ) async {
+    final db = await database;
+    return db.query(
+      'agent_actions',
+      where: 'updated_at >= ?',
+      whereArgs: [isoDateTime],
+      orderBy: 'updated_at DESC',
+    );
+  }
+
+  @override
+  Future<void> replaceDailyAgentPlan(
+    Map<String, Object?> plan,
+    List<Map<String, Object?>> actions,
+  ) async {
+    final db = await database;
+    await db.transaction((transaction) async {
+      await transaction.update(
+        'agent_actions',
+        {
+          'status': AgentActionStatus.expired.name,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        where: 'plan_date = ? AND status = ?',
+        whereArgs: [plan['local_date'], AgentActionStatus.pending.name],
+      );
+      await transaction.insert(
+        'daily_agent_plans',
+        Map<String, Object?>.from(plan),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      for (final action in actions) {
+        await transaction.insert(
+          'agent_actions',
+          Map<String, Object?>.from(action)..remove('id'),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+  }
+
+  @override
+  Future<int> updateAgentAction(
+    String clientActionId,
+    Map<String, Object?> values,
+  ) async {
+    final db = await database;
+    return db.update(
+      'agent_actions',
+      values,
+      where: 'client_action_id = ?',
+      whereArgs: [clientActionId],
+    );
+  }
+
+  @override
+  Future<int> markDailyAgentPlanNeedsRefresh(String localDate) async {
+    final db = await database;
+    return db.update(
+      'daily_agent_plans',
+      {'needs_refresh': 1},
+      where: 'local_date = ?',
+      whereArgs: [localDate],
+    );
+  }
+
+  Future<void> saveHealthAnalysisCache(HealthAnalysisCache cache) async {
+    final db = await database;
+    await db.insert(
+      'health_analysis_cache',
+      cache.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<HealthAnalysisCache?> fetchHealthAnalysisCache(
+    String periodKey,
+  ) async {
+    final db = await database;
+    final maps = await db.query(
+      'health_analysis_cache',
+      where: 'period_key = ?',
+      whereArgs: [periodKey],
+      limit: 1,
+    );
+    return maps.isEmpty ? null : HealthAnalysisCache.fromMap(maps.first);
+  }
+
+  Future<void> deleteAllHealthAnalysisCache() async {
+    final db = await database;
+    await db.delete('health_analysis_cache');
   }
 
   Future<int> getDatabaseFileSize() async {
@@ -158,7 +392,8 @@ class DatabaseService {
   Future<void> markUploadTaskFailed({
     required String clientRecordId,
     required String error,
-    RecommendationUploadTaskStatus status = RecommendationUploadTaskStatus.failed,
+    RecommendationUploadTaskStatus status =
+        RecommendationUploadTaskStatus.failed,
   }) async {
     final db = await database;
     final existing = await db.query(
@@ -231,10 +466,9 @@ class DatabaseService {
     bool? autoUploadEnabled,
   }) async {
     final db = await database;
-    final values = <String, Object?>{
-      'recommendation_status': status.dbValue,
-    };
-    if (remoteRecommendationId != null || status == LocalRecommendationStatus.localOnly) {
+    final values = <String, Object?>{'recommendation_status': status.dbValue};
+    if (remoteRecommendationId != null ||
+        status == LocalRecommendationStatus.localOnly) {
       values['remote_recommendation_id'] = remoteRecommendationId;
     }
     if (autoUploadEnabled != null) {
@@ -299,6 +533,50 @@ class DatabaseService {
         updated_at TEXT NOT NULL
       )
     ''');
+  }
+
+  Future<void> _createExerciseRecordsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS exercise_records(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_record_id TEXT NOT NULL UNIQUE,
+        activity_type TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        duration_seconds INTEGER NOT NULL,
+        distance_meters INTEGER,
+        average_heart_rate_bpm INTEGER,
+        peak_heart_rate_bpm INTEGER,
+        calories_kcal INTEGER,
+        rpe INTEGER,
+        note TEXT,
+        detail_json TEXT NOT NULL DEFAULT '{}',
+        image_paths_json TEXT NOT NULL DEFAULT '[]',
+        source TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_exercise_started_at '
+      'ON exercise_records(started_at DESC)',
+    );
+  }
+
+  Future<void> _createHealthAnalysisCacheTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS health_analysis_cache(
+        period_key TEXT PRIMARY KEY,
+        data_fingerprint TEXT NOT NULL,
+        content_json TEXT NOT NULL,
+        generated_at TEXT NOT NULL
+      )
+    ''');
+  }
+
+  Future<void> _createAgentTables(Database db) async {
+    for (final statement in agentTableSql) {
+      await db.execute(statement);
+    }
   }
 
   Future<void> _migrateDatabase(Database db, int oldVersion) async {
@@ -385,6 +663,15 @@ class DatabaseService {
 
     if (taskTables.isEmpty) {
       await _createUploadTaskTable(db);
+    }
+    if (oldVersion < 6) {
+      await _createExerciseRecordsTable(db);
+    }
+    if (oldVersion < 7) {
+      await _createHealthAnalysisCacheTable(db);
+    }
+    if (oldVersion < 8) {
+      await _createAgentTables(db);
     }
   }
 }

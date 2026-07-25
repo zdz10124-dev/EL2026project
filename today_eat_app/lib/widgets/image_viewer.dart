@@ -2,24 +2,30 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+List<String> existingImagePaths(Iterable<String> imagePaths) => imagePaths
+    .where((path) => path.isNotEmpty && File(path).existsSync())
+    .toList();
+
 /// Full-screen image viewer with PageView for swiping through multiple images.
-void openImageViewer(BuildContext context, List<String> imagePaths,
-    {int initialIndex = 0}) {
+void openImageViewer(
+  BuildContext context,
+  List<String> imagePaths, {
+  int initialIndex = 0,
+}) {
   if (imagePaths.isEmpty) return;
 
-  final validPaths =
-      imagePaths.where((p) => p.isNotEmpty && File(p).existsSync()).toList();
+  final requestedIndex = initialIndex.clamp(0, imagePaths.length - 1).toInt();
+  final requestedPath = imagePaths[requestedIndex];
+  final validPaths = existingImagePaths(imagePaths);
   if (validPaths.isEmpty) return;
 
-  final startIndex =
-      initialIndex.clamp(0, validPaths.length - 1).toInt();
+  final validRequestedIndex = validPaths.indexOf(requestedPath);
+  final startIndex = validRequestedIndex < 0 ? 0 : validRequestedIndex;
 
   Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => _ImageViewerScreen(
-        imagePaths: validPaths,
-        initialIndex: startIndex,
-      ),
+      builder: (_) =>
+          _ImageViewerScreen(imagePaths: validPaths, initialIndex: startIndex),
     ),
   );
 }
@@ -69,10 +75,7 @@ class _ImageViewerScreenState extends State<_ImageViewerScreen> {
         onPageChanged: (i) => setState(() => _currentIndex = i),
         itemBuilder: (_, i) => InteractiveViewer(
           child: Center(
-            child: Image.file(
-              File(widget.imagePaths[i]),
-              fit: BoxFit.contain,
-            ),
+            child: Image.file(File(widget.imagePaths[i]), fit: BoxFit.contain),
           ),
         ),
       ),

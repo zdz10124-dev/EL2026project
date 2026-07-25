@@ -43,3 +43,32 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+val brandedApkNamePrefix = "\u98df\u52a8\u667a\u8861"
+
+val copyFlutterToolApks by tasks.registering(Copy::class) {
+    from(layout.buildDirectory.dir("outputs/apk")) {
+        include("**/app-*.apk")
+        eachFile {
+            path = name
+        }
+        includeEmptyDirs = false
+    }
+    into(layout.buildDirectory.dir("outputs/flutter-apk"))
+}
+
+val copyBrandedApks by tasks.registering(Copy::class) {
+    from(layout.buildDirectory.dir("outputs/apk")) {
+        include("**/app-*.apk")
+        eachFile {
+            path = name.replaceFirst("app-", "$brandedApkNamePrefix-")
+        }
+        includeEmptyDirs = false
+    }
+    into(layout.buildDirectory.dir("outputs/flutter-apk"))
+}
+
+tasks.matching { it.name.startsWith("assemble") }.configureEach {
+    finalizedBy(copyFlutterToolApks)
+    finalizedBy(copyBrandedApks)
+}
